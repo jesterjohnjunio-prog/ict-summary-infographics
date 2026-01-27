@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ICT Closed Tickets Analytics Dashboard</title>
+    <title>ICT Concerns Analytics Dashboard</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
@@ -260,23 +260,6 @@
                 height: 250px;
             }
         }
-        
-        /* Color classes */
-        .color-1 { background-color: #4a6fa5; }
-        .color-2 { background-color: #2c5282; }
-        .color-3 { background-color: #38a169; }
-        .color-4 { background-color: #d69e2e; }
-        .color-5 { background-color: #e53e3e; }
-        .color-6 { background-color: #805ad5; }
-        .color-7 { background-color: #dd6b20; }
-        .color-8 { background-color: #319795; }
-        
-        .gender-male { background-color: #2c5282; }
-        .gender-female { background-color: #d53f8c; }
-        
-        .age-young { background-color: #38a169; }
-        .age-middle { background-color: #d69e2e; }
-        .age-senior { background-color: #e53e3e; }
     </style>
 </head>
 <body>
@@ -394,6 +377,22 @@
         let closedTicketsData = [];
         let analyticsSummary = {};
         
+        // Response time mapping - converts text categories to numeric values
+        const responseTimeMapping = {
+            // Text categories from K column to numeric hours
+            'Less than one (1) hour': { numericValue: 0.5, label: 'Less than 1 hour', description: '<1 hr' },
+            'Within the day': { numericValue: 4.5, label: 'Within the day', description: '1-8 hrs' },
+            'The next day': { numericValue: 12, label: 'The next day', description: '8-16 hrs' },
+            'More than two (2) days': { numericValue: 24, label: 'More than 2 days', description: '>16 hrs' },
+            
+            // Add variations just in case
+            'Less than one hour': { numericValue: 0.5, label: 'Less than 1 hour', description: '<1 hr' },
+            'Within the day (1-8 hrs)': { numericValue: 4.5, label: 'Within the day', description: '1-8 hrs' },
+            'The next day (8-16 hrs)': { numericValue: 12, label: 'The next day', description: '8-16 hrs' },
+            'More than 2 days': { numericValue: 24, label: 'More than 2 days', description: '>16 hrs' },
+            'More than two days': { numericValue: 24, label: 'More than 2 days', description: '>16 hrs' }
+        };
+        
         // Color scales
         const colorScale = d3.scaleOrdinal()
             .range(['#4a6fa5', '#2c5282', '#38a169', '#d69e2e', '#e53e3e', '#805ad5', '#dd6b20', '#319795']);
@@ -402,6 +401,50 @@
         const tooltip = d3.select('body').append('div')
             .attr('class', 'tooltip')
             .style('opacity', 0);
+        
+        // Function to convert response time text to numeric value
+        function convertResponseTimeToNumeric(responseTimeText) {
+            if (!responseTimeText) return 0;
+            
+            const normalizedText = responseTimeText.trim();
+            
+            // Try exact match first
+            if (responseTimeMapping[normalizedText]) {
+                return responseTimeMapping[normalizedText].numericValue;
+            }
+            
+            // Try partial match
+            for (const [key, value] of Object.entries(responseTimeMapping)) {
+                if (normalizedText.toLowerCase().includes(key.toLowerCase())) {
+                    return value.numericValue;
+                }
+            }
+            
+            // Default to 0 if no match found
+            console.log('Unknown response time category:', normalizedText);
+            return 0;
+        }
+        
+        // Function to get response time category info
+        function getResponseTimeCategoryInfo(responseTimeText) {
+            if (!responseTimeText) return null;
+            
+            const normalizedText = responseTimeText.trim();
+            
+            // Try exact match first
+            if (responseTimeMapping[normalizedText]) {
+                return responseTimeMapping[normalizedText];
+            }
+            
+            // Try partial match
+            for (const [key, value] of Object.entries(responseTimeMapping)) {
+                if (normalizedText.toLowerCase().includes(key.toLowerCase())) {
+                    return value;
+                }
+            }
+            
+            return null;
+        }
         
         // Load data from Google Sheets
         async function loadClosedTicketsData() {
@@ -446,13 +489,22 @@
                     
                     // Check if we have the required columns (A-M)
                     if (cols.length >= 13) {
+                        // Get response time text from column K (index 10)
+                        const responseTimeText = cols[10] || '';
+                        
+                        // Convert response time text to numeric value
+                        const responseTimeNumeric = convertResponseTimeToNumeric(responseTimeText);
+                        const responseTimeCategory = getResponseTimeCategoryInfo(responseTimeText);
+                        
                         // Create ticket object with only the columns we need
                         const ticket = {
                             'Age': cols[3] || '',        // Column D
                             'Sex': cols[4] || '',        // Column E
                             'Regulation Area': cols[6] || '', // Column G
                             'Problem Encountered': cols[7] || '', // Column H
-                            'Response Time': parseFloat(cols[10]) || 0, // Column K
+                            'Response Time Text': responseTimeText, // Column K (text)
+                            'Response Time': responseTimeNumeric, // Converted numeric value
+                            'Response Time Category': responseTimeCategory, // Category info
                             'Average Performance': parseFloat(cols[12]) || 0 // Column M
                         };
                         
@@ -466,6 +518,7 @@
                 }
                 
                 console.log('Loaded', closedTicketsData.length, 'closed tickets');
+                console.log('Sample ticket:', closedTicketsData[0]);
                 
                 if (closedTicketsData.length > 0) {
                     // Analyze data
@@ -538,15 +591,35 @@
                 // Problem type analysis
                 problemTypes: {},
                 
-                // Response time analysis - UPDATED with categories
+                // Response time analysis - categories from K column
                 responseTimeCategories: {
-                    'Less than 1 hour': { label: 'Less than 1 hour', count: 0 },
-                    'Within the day': { label: 'Within the day (1-8 hrs)', count: 0 },
-                    'The next day': { label: 'The next day (8-16 hrs)', count: 0 },
-                    'More than 2 days': { label: 'More than 2 days (>16 hrs)', count: 0 }
+                    'Less than 1 hour': { 
+                        label: 'Less than 1 hour', 
+                        description: '<1 hr',
+                        count: 0,
+                        numericValue: 0.5
+                    },
+                    'Within the day': { 
+                        label: 'Within the day', 
+                        description: '1-8 hrs',
+                        count: 0,
+                        numericValue: 4.5
+                    },
+                    'The next day': { 
+                        label: 'The next day', 
+                        description: '8-16 hrs',
+                        count: 0,
+                        numericValue: 12
+                    },
+                    'More than 2 days': { 
+                        label: 'More than 2 days', 
+                        description: '>16 hrs',
+                        count: 0,
+                        numericValue: 24
+                    }
                 },
                 
-                // Original response time stats (for backward compatibility)
+                // Response time numeric stats
                 responseTimeStats: {
                     min: Infinity,
                     max: 0,
@@ -613,18 +686,21 @@
                     analyticsSummary.problemTypes[problem] = (analyticsSummary.problemTypes[problem] || 0) + 1;
                 }
                 
-                // Response time analysis - UPDATED with categories
+                // Response time analysis
                 const responseTime = ticket['Response Time'];
                 if (responseTime > 0) {
-                    // Update category counts
-                    if (responseTime < 1) {
-                        analyticsSummary.responseTimeCategories['Less than 1 hour'].count++;
-                    } else if (responseTime >= 1 && responseTime <= 8) {
-                        analyticsSummary.responseTimeCategories['Within the day'].count++;
-                    } else if (responseTime > 8 && responseTime <= 16) {
-                        analyticsSummary.responseTimeCategories['The next day'].count++;
-                    } else if (responseTime > 16) {
-                        analyticsSummary.responseTimeCategories['More than 2 days'].count++;
+                    // Update category counts based on text category
+                    const categoryInfo = ticket['Response Time Category'];
+                    if (categoryInfo) {
+                        if (categoryInfo.label === 'Less than 1 hour') {
+                            analyticsSummary.responseTimeCategories['Less than 1 hour'].count++;
+                        } else if (categoryInfo.label === 'Within the day') {
+                            analyticsSummary.responseTimeCategories['Within the day'].count++;
+                        } else if (categoryInfo.label === 'The next day') {
+                            analyticsSummary.responseTimeCategories['The next day'].count++;
+                        } else if (categoryInfo.label === 'More than 2 days') {
+                            analyticsSummary.responseTimeCategories['More than 2 days'].count++;
+                        }
                     }
                     
                     // Update numeric stats
@@ -683,9 +759,15 @@
                 responseCategories['The next day'].count +
                 responseCategories['More than 2 days'].count;
             
-            const fastestResponseCategory = Object.values(responseCategories).reduce((prev, current) => 
+            // Find the most common response time category
+            const categoryArray = Object.values(responseCategories);
+            const mostCommonCategory = categoryArray.reduce((prev, current) => 
                 (prev.count > current.count) ? prev : current
             );
+            
+            // Calculate percentage of tickets resolved in less than 1 hour
+            const lessThan1HourPercentage = totalWithResponseTime > 0 ? 
+                Math.round((responseCategories['Less than 1 hour'].count / totalWithResponseTime) * 100) : 0;
             
             const statsCards = [
                 {
@@ -712,9 +794,9 @@
                 {
                     icon: 'fas fa-bolt',
                     iconColor: '#38a169',
-                    title: 'Fastest Response',
-                    value: `${fastestResponseCategory.label.split(' ')[0]}`,
-                    subtitle: `${fastestResponseCategory.count} tickets`
+                    title: 'Most Common Response',
+                    value: mostCommonCategory.label.split(' ')[0],
+                    subtitle: `${mostCommonCategory.count} tickets`
                 },
                 {
                     icon: 'fas fa-star',
@@ -726,10 +808,9 @@
                 {
                     icon: 'fas fa-percentage',
                     iconColor: '#4a6fa5',
-                    title: '<1 Hour Response',
-                    value: totalWithResponseTime > 0 ? 
-                        `${Math.round((responseCategories['Less than 1 hour'].count / totalWithResponseTime) * 100)}%` : '0%',
-                    subtitle: 'Immediate resolution rate'
+                    title: '<1 Hour Response Rate',
+                    value: `${lessThan1HourPercentage}%`,
+                    subtitle: 'Immediate resolution'
                 }
             ];
             
@@ -1081,7 +1162,7 @@
             </div>`;
         }
         
-        // UPDATED: Create response time chart with categories
+        // UPDATED: Create response time chart with text categories from K column
         function createResponseTimeChart() {
             const container = document.getElementById('responseTimeChart');
             container.innerHTML = '';
@@ -1099,35 +1180,23 @@
                 .append('g')
                 .attr('transform', `translate(${margin.left},${margin.top})`);
             
-            // Prepare response time category data
+            // Prepare response time category data from analytics
             const responseTimeData = [
-                { 
-                    label: 'Less than 1 hour', 
-                    description: '<1 hr',
-                    count: analyticsSummary.responseTimeCategories['Less than 1 hour'].count,
-                    color: '#38a169'
-                },
-                { 
-                    label: 'Within the day', 
-                    description: '1-8 hrs',
-                    count: analyticsSummary.responseTimeCategories['Within the day'].count,
-                    color: '#d69e2e'
-                },
-                { 
-                    label: 'The next day', 
-                    description: '8-16 hrs',
-                    count: analyticsSummary.responseTimeCategories['The next day'].count,
-                    color: '#ed8936'
-                },
-                { 
-                    label: 'More than 2 days', 
-                    description: '>16 hrs',
-                    count: analyticsSummary.responseTimeCategories['More than 2 days'].count,
-                    color: '#e53e3e'
-                }
+                analyticsSummary.responseTimeCategories['Less than 1 hour'],
+                analyticsSummary.responseTimeCategories['Within the day'],
+                analyticsSummary.responseTimeCategories['The next day'],
+                analyticsSummary.responseTimeCategories['More than 2 days']
             ];
             
-            // X scale for categories
+            // Category colors
+            const categoryColors = {
+                'Less than 1 hour': '#38a169', // Green
+                'Within the day': '#d69e2e',   // Yellow
+                'The next day': '#ed8936',     // Orange
+                'More than 2 days': '#e53e3e'  // Red
+            };
+            
+            // X scale for categories (using descriptions)
             const x = d3.scaleBand()
                 .domain(responseTimeData.map(d => d.description))
                 .range([0, width])
@@ -1158,7 +1227,7 @@
                 .attr('y', d => y(d.count))
                 .attr('width', x.bandwidth())
                 .attr('height', d => height - y(d.count))
-                .attr('fill', d => d.color)
+                .attr('fill', d => categoryColors[d.label])
                 .attr('rx', 4)
                 .attr('ry', 4)
                 .on('mouseover', function(event, d) {
@@ -1192,26 +1261,30 @@
             // Calculate total tickets with response time
             const totalResponseTickets = responseTimeData.reduce((sum, d) => sum + d.count, 0);
             
-            // Add average response time line
+            // Calculate average numeric response time for reference line
             const avgResponseTime = analyticsSummary.responseTimeStats.avg;
-            svg.append('line')
-                .attr('x1', 0)
-                .attr('x2', width)
-                .attr('y1', y(avgResponseTime))
-                .attr('y2', y(avgResponseTime))
-                .attr('stroke', '#2c5282')
-                .attr('stroke-width', 2)
-                .attr('stroke-dasharray', '5,5');
             
-            // Add average label
-            svg.append('text')
-                .attr('x', width - 5)
-                .attr('y', y(avgResponseTime) - 5)
-                .text(`Avg: ${avgResponseTime.toFixed(1)}h`)
-                .style('font-size', '12px')
-                .style('fill', '#2c5282')
-                .style('font-weight', 'bold')
-                .style('text-anchor', 'end');
+            // Add average response time line (if we have data)
+            if (totalResponseTickets > 0 && avgResponseTime > 0) {
+                svg.append('line')
+                    .attr('x1', 0)
+                    .attr('x2', width)
+                    .attr('y1', y(avgResponseTime))
+                    .attr('y2', y(avgResponseTime))
+                    .attr('stroke', '#2c5282')
+                    .attr('stroke-width', 2)
+                    .attr('stroke-dasharray', '5,5');
+                
+                // Add average label
+                svg.append('text')
+                    .attr('x', width - 5)
+                    .attr('y', y(avgResponseTime) - 5)
+                    .text(`Avg: ${avgResponseTime.toFixed(1)}h`)
+                    .style('font-size', '12px')
+                    .style('fill', '#2c5282')
+                    .style('font-weight', 'bold')
+                    .style('text-anchor', 'end');
+            }
             
             // Add X axis label
             svg.append('text')
@@ -1252,19 +1325,21 @@
                 const percentage = calculateResponseTimePercentage(category.label);
                 return `
                     <div class="legend-item">
-                        <div class="legend-color" style="background-color: ${category.color};"></div>
+                        <div class="legend-color" style="background-color: ${categoryColors[category.label]};"></div>
                         <span>${category.label} (${category.description}): ${category.count} tickets (${percentage}%)</span>
                     </div>
                 `;
             }).join('');
             
-            // Add average to legend
-            legend.innerHTML += `
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
-                    <span>Average Response Time: ${avgResponseTime.toFixed(1)} hours</span>
-                </div>
-            `;
+            // Add average to legend (if available)
+            if (totalResponseTickets > 0 && avgResponseTime > 0) {
+                legend.innerHTML += `
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
+                        <span>Average Numeric Time: ${avgResponseTime.toFixed(1)} hours</span>
+                    </div>
+                `;
+            }
         }
         
         // Create performance chart
@@ -1500,10 +1575,10 @@
                 .attr('r', 6)
                 .attr('fill', d => {
                     // Color by response time category
-                    if (d.responseTime < 1) return '#38a169';
-                    if (d.responseTime <= 8) return '#d69e2e';
-                    if (d.responseTime <= 16) return '#ed8936';
-                    return '#e53e3e';
+                    if (d.responseTime < 1) return '#38a169';        // <1 hour
+                    if (d.responseTime <= 8) return '#d69e2e';      // 1-8 hours
+                    if (d.responseTime <= 16) return '#ed8936';     // 8-16 hours
+                    return '#e53e3e';                              // >16 hours
                 })
                 .attr('opacity', 0.7)
                 .attr('stroke', 'white')
@@ -1526,7 +1601,7 @@
             const correlation = calculateCorrelation(correlationData);
             
             // Add correlation line if there's a correlation
-            if (Math.abs(correlation) > 0.1) {
+            if (Math.abs(correlation) > 0.1 && correlationData.length > 1) {
                 const regression = linearRegression(correlationData);
                 
                 svg.append('line')
@@ -1590,7 +1665,7 @@
                 <div class="legend-item">
                     <span>Correlation coefficient: ${correlation.toFixed(2)}</span>
                 </div>
-                ${Math.abs(correlation) > 0.1 ? `
+                ${Math.abs(correlation) > 0.1 && correlationData.length > 1 ? `
                 <div class="legend-item">
                     <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
                     <span>Regression line (trend)</span>
