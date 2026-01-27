@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICT Closed Tickets Analytics Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { 
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
+            color: #333;
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .dashboard-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+        
+        .dashboard-header {
+            background: linear-gradient(to right, #2c5282, #4a6fa5);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .dashboard-header h1 {
+            font-size: 2.2rem;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+        
+        .dashboard-header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            max-width: 800px;
+            margin: 0 auto;
+            line-height: 1.6;
+        }
+        
+        .stats-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 25px;
+            background: #f8fafc;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+        }
+        
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .stat-content h3 {
+            font-size: 1.1rem;
+            color: #64748b;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #2c5282;
+        }
+        
+        .stat-subtitle {
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+        
+        .charts-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 25px;
+            padding: 25px;
+        }
+        
+        .chart-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+        }
+        
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f1f5f9;
+        }
+        
+        .chart-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #2c5282;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .chart-subtitle {
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+        
+        .chart-container {
+            height: 300px;
+            position: relative;
+        }
+        
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #f1f5f9;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            border-radius: 3px;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 100;
+        }
+        
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: #64748b;
+            text-align: center;
+        }
+        
+        .loading-spinner {
+            font-size: 3rem;
+            margin-bottom: 20px;
+            color: #4a6fa5;
+        }
+        
+        .error-message {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: #e53e3e;
+            text-align: center;
+        }
+        
+        .refresh-btn {
+            background: #4a6fa5;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 1rem;
+            margin-top: 20px;
+            transition: background 0.3s;
+        }
+        
+        .refresh-btn:hover {
+            background: #2c5282;
+        }
+        
+        .dashboard-footer {
+            text-align: center;
+            padding: 20px;
+            color: #94a3b8;
+            font-size: 0.9rem;
+            border-top: 1px solid #e2e8f0;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 1200px) {
+            .charts-container {
+                grid-template-columns: 1fr;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard-header h1 {
+                font-size: 1.8rem;
+            }
+            
+            .charts-container {
+                padding: 15px;
+            }
+            
+            .chart-card {
+                padding: 15px;
+            }
+            
+            .chart-container {
+                height: 250px;
+            }
+        }
+        
+        /* Custom color classes for charts */
+        .color-1 { background-color: #4a6fa5; }
+        .color-2 { background-color: #2c5282; }
+        .color-3 { background-color: #38a169; }
+        .color-4 { background-color: #d69e2e; }
+        .color-5 { background-color: #e53e3e; }
+        .color-6 { background-color: #805ad5; }
+        .color-7 { background-color: #dd6b20; }
+        .color-8 { background-color: #319795; }
+        
+        /* Gender specific colors */
+        .gender-male { background-color: #2c5282; }
+        .gender-female { background-color: #d53f8c; }
+        
+        /* Age group colors */
+        .age-young { background-color: #38a169; }
+        .age-middle { background-color: #d69e2e; }
+        .age-senior { background-color: #e53e3e; }
+    </style>
+</head>
+<body>
+    <div class="dashboard-container">
+        <div class="dashboard-header">
+            <h1><i class="fas fa-chart-line"></i> ICT Closed Tickets Analytics Dashboard</h1>
+            <p>Comprehensive analysis of resolved ICT service requests with insights into demographics, response times, and performance metrics</p>
+        </div>
+        
+        <div class="stats-summary" id="statsSummary">
+            <!-- Stats will be populated by JavaScript -->
+        </div>
+        
+        <div class="charts-container">
+            <!-- Chart 1: Demographics (Age & Gender) -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title"><i class="fas fa-users"></i> Demographics Overview</div>
+                        <div class="chart-subtitle">Age distribution and gender breakdown of talent</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="demographicsChart"></div>
+                <div class="legend" id="demographicsLegend"></div>
+            </div>
+            
+            <!-- Chart 2: Regulation Area Distribution -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title"><i class="fas fa-sitemap"></i> Regulation Areas</div>
+                        <div class="chart-subtitle">Distribution of tickets across regulation areas</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="regulationChart"></div>
+                <div class="legend" id="regulationLegend"></div>
+            </div>
+            
+            <!-- Chart 3: Problem Types -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title"><i class="fas fa-exclamation-triangle"></i> Problem Types Analysis</div>
+                        <div class="chart-subtitle">Most common issues encountered by talent</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="problemChart"></div>
+                <div class="legend" id="problemLegend"></div>
+            </div>
+            
+            <!-- Chart 4: Response Time Performance -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title"><i class="fas fa-stopwatch"></i> Response Time Analysis</div>
+                        <div class="chart-subtitle">Distribution of response times for closed tickets</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="responseTimeChart"></div>
+                <div class="legend" id="responseTimeLegend"></div>
+            </div>
+            
+            <!-- Chart 5: Performance Ratings -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title"><i class="fas fa-star"></i> Performance Ratings</div>
+                        <div class="chart-subtitle">Average performance ratings across different categories</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="performanceChart"></div>
+                <div class="legend" id="performanceLegend"></div>
+            </div>
+            
+            <!-- Chart 6: Correlation Analysis -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <div>
+                        <div class="chart-title"><i class="fas fa-project-diagram"></i> Correlation Analysis</div>
+                        <div class="chart-subtitle">Response time vs. performance rating correlation</div>
+                    </div>
+                </div>
+                <div class="chart-container" id="correlationChart"></div>
+                <div class="legend" id="correlationLegend"></div>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+            </div>
+            <h2>Loading Closed Tickets Analytics</h2>
+            <p>Fetching and analyzing data from Google Sheets...</p>
+        </div>
+        
+        <div id="error" class="error-message" style="display: none;">
+            <div style="font-size: 3rem; margin-bottom: 20px;">
+                <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <h2>Unable to Load Analytics Data</h2>
+            <p id="errorMessage">Please check your connection and try again.</p>
+            <button class="refresh-btn" onclick="loadClosedTicketsData()">
+                <i class="fas fa-redo-alt"></i> Try Again
+            </button>
+        </div>
+        
+        <div class="dashboard-footer">
+            <p>Data Source: ICT Concerns - Closed Tickets Sheet | Last Updated: <span id="lastUpdated"></span></p>
+            <p>Analytics Dashboard • Auto-refreshes every 10 minutes</p>
+        </div>
+    </div>
+
+    <script>
+        // Main data storage
+        let closedTicketsData = [];
+        let analyticsSummary = {};
+        
+        // Color scales
+        const colorScale = d3.scaleOrdinal()
+            .range(['#4a6fa5', '#2c5282', '#38a169', '#d69e2e', '#e53e3e', '#805ad5', '#dd6b20', '#319795']);
+        
+        // Tooltip element
+        const tooltip = d3.select('body').append('div')
+            .attr('class', 'tooltip')
+            .style('opacity', 0);
+        
+        // Load data from Google Sheets
+        async function loadClosedTicketsData() {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            const statsSummary = document.getElementById('statsSummary');
+            
+            loading.style.display = 'flex';
+            error.style.display = 'none';
+            statsSummary.innerHTML = '';
+            
+            try {
+                // Use CSV export from the Closed Tickets sheet
+                const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSlQLcK_Ktw2zemNHDZ_70giWPqT54Mvoci_dJxQz1RWYhe94UaDQLPQU89DUYLTY-ow7s2sWa-PB0h/pub?gid=1210338777&single=true&output=csv';
+                
+                console.log('Loading closed tickets from:', csvUrl);
+                
+                const response = await fetch(csvUrl);
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                
+                const csvText = await response.text();
+                
+                // Parse CSV
+                const rows = csvText.split('\n');
+                closedTicketsData = [];
+                
+                // Parse and filter valid rows
+                for (let i = 1; i < rows.length; i++) {
+                    if (rows[i].trim() === '') continue;
+                    
+                    const cols = parseCSVRow(rows[i]);
+                    
+                    // Check if we have the required columns (A-M)
+                    if (cols.length >= 13) {
+                        // Create ticket object with only the columns we need
+                        const ticket = {
+                            'Age': cols[3] || '',        // Column D
+                            'Sex': cols[4] || '',        // Column E
+                            'Regulation Area': cols[6] || '', // Column G
+                            'Problem Encountered': cols[7] || '', // Column H
+                            'Response Time': parseFloat(cols[10]) || 0, // Column K
+                            'Average Performance': parseFloat(cols[12]) || 0 // Column M
+                        };
+                        
+                        // Only add if we have at least some valid data
+                        if (ticket['Age'] || ticket['Sex'] || ticket['Regulation Area'] || 
+                            ticket['Problem Encountered'] || ticket['Response Time'] > 0 || 
+                            ticket['Average Performance'] > 0) {
+                            closedTicketsData.push(ticket);
+                        }
+                    }
+                }
+                
+                console.log('Loaded', closedTicketsData.length, 'closed tickets');
+                
+                if (closedTicketsData.length > 0) {
+                    // Analyze data
+                    analyzeData();
+                    
+                    // Update last updated timestamp
+                    document.getElementById('lastUpdated').textContent = new Date().toLocaleString();
+                    
+                    // Hide loading, show charts
+                    loading.style.display = 'none';
+                    
+                    // Create all visualizations
+                    createSummaryStats();
+                    createDemographicsChart();
+                    createRegulationAreaChart();
+                    createProblemTypeChart();
+                    createResponseTimeChart();
+                    createPerformanceChart();
+                    createCorrelationChart();
+                } else {
+                    throw new Error('No valid closed ticket data found in sheet');
+                }
+                
+            } catch (err) {
+                console.error('Error loading closed tickets:', err);
+                document.getElementById('errorMessage').textContent = err.message;
+                loading.style.display = 'none';
+                error.style.display = 'flex';
+            }
+        }
+        
+        // Parse CSV row with proper handling of quoted fields
+        function parseCSVRow(row) {
+            const cols = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < row.length; i++) {
+                const char = row[i];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    cols.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            
+            cols.push(current.trim());
+            return cols;
+        }
+        
+        // Analyze the data to create summary statistics
+        function analyzeData() {
+            analyticsSummary = {
+                totalTickets: closedTicketsData.length,
+                
+                // Age analysis
+                ageGroups: {},
+                averageAge: 0,
+                
+                // Gender analysis
+                genderCount: { Male: 0, Female: 0 },
+                
+                // Regulation area analysis
+                regulationAreas: {},
+                
+                // Problem type analysis
+                problemTypes: {},
+                
+                // Response time analysis
+                responseTimeStats: {
+                    min: Infinity,
+                    max: 0,
+                    avg: 0,
+                    total: 0
+                },
+                
+                // Performance analysis
+                performanceStats: {
+                    min: Infinity,
+                    max: 0,
+                    avg: 0,
+                    total: 0
+                }
+            };
+            
+            let ageSum = 0;
+            let validAgeCount = 0;
+            let responseTimeSum = 0;
+            let validResponseTimeCount = 0;
+            let performanceSum = 0;
+            let validPerformanceCount = 0;
+            
+            // Process each ticket
+            closedTicketsData.forEach(ticket => {
+                // Age analysis
+                if (ticket.Age) {
+                    const age = parseInt(ticket.Age);
+                    if (!isNaN(age)) {
+                        ageSum += age;
+                        validAgeCount++;
+                        
+                        // Categorize into age groups
+                        let ageGroup;
+                        if (age <= 25) ageGroup = '18-25';
+                        else if (age <= 35) ageGroup = '26-35';
+                        else if (age <= 45) ageGroup = '36-45';
+                        else if (age <= 55) ageGroup = '46-55';
+                        else ageGroup = '56+';
+                        
+                        analyticsSummary.ageGroups[ageGroup] = (analyticsSummary.ageGroups[ageGroup] || 0) + 1;
+                    }
+                }
+                
+                // Gender analysis
+                if (ticket.Sex) {
+                    const gender = ticket.Sex.trim().toLowerCase();
+                    if (gender === 'male' || gender === 'm') {
+                        analyticsSummary.genderCount.Male++;
+                    } else if (gender === 'female' || gender === 'f') {
+                        analyticsSummary.genderCount.Female++;
+                    }
+                }
+                
+                // Regulation area analysis
+                if (ticket['Regulation Area']) {
+                    const area = ticket['Regulation Area'].trim();
+                    analyticsSummary.regulationAreas[area] = (analyticsSummary.regulationAreas[area] || 0) + 1;
+                }
+                
+                // Problem type analysis
+                if (ticket['Problem Encountered']) {
+                    const problem = ticket['Problem Encountered'].trim();
+                    analyticsSummary.problemTypes[problem] = (analyticsSummary.problemTypes[problem] || 0) + 1;
+                }
+                
+                // Response time analysis
+                if (ticket['Response Time'] > 0) {
+                    responseTimeSum += ticket['Response Time'];
+                    validResponseTimeCount++;
+                    
+                    if (ticket['Response Time'] < analyticsSummary.responseTimeStats.min) {
+                        analyticsSummary.responseTimeStats.min = ticket['Response Time'];
+                    }
+                    if (ticket['Response Time'] > analyticsSummary.responseTimeStats.max) {
+                        analyticsSummary.responseTimeStats.max = ticket['Response Time'];
+                    }
+                }
+                
+                // Performance analysis
+                if (ticket['Average Performance'] > 0) {
+                    performanceSum += ticket['Average Performance'];
+                    validPerformanceCount++;
+                    
+                    if (ticket['Average Performance'] < analyticsSummary.performanceStats.min) {
+                        analyticsSummary.performanceStats.min = ticket['Average Performance'];
+                    }
+                    if (ticket['Average Performance'] > analyticsSummary.performanceStats.max) {
+                        analyticsSummary.performanceStats.max = ticket['Average Performance'];
+                    }
+                }
+            });
+            
+            // Calculate averages
+            if (validAgeCount > 0) {
+                analyticsSummary.averageAge = Math.round(ageSum / validAgeCount);
+            }
+            
+            if (validResponseTimeCount > 0) {
+                analyticsSummary.responseTimeStats.avg = responseTimeSum / validResponseTimeCount;
+                analyticsSummary.responseTimeStats.total = responseTimeSum;
+            }
+            
+            if (validPerformanceCount > 0) {
+                analyticsSummary.performanceStats.avg = performanceSum / validPerformanceCount;
+                analyticsSummary.performanceStats.total = performanceSum;
+            }
+            
+            console.log('Analytics summary:', analyticsSummary);
+        }
+        
+        // Create summary statistics cards
+        function createSummaryStats() {
+            const statsSummary = document.getElementById('statsSummary');
+            
+            const statsCards = [
+                {
+                    icon: 'fas fa-ticket-alt',
+                    iconColor: '#4a6fa5',
+                    title: 'Total Closed Tickets',
+                    value: analyticsSummary.totalTickets,
+                    subtitle: 'Successfully resolved requests'
+                },
+                {
+                    icon: 'fas fa-user-friends',
+                    iconColor: '#38a169',
+                    title: 'Average Age',
+                    value: analyticsSummary.averageAge,
+                    subtitle: 'Years'
+                },
+                {
+                    icon: 'fas fa-venus-mars',
+                    iconColor: '#d53f8c',
+                    title: 'Gender Ratio',
+                    value: `${analyticsSummary.genderCount.Male}:${analyticsSummary.genderCount.Female}`,
+                    subtitle: 'Male:Female'
+                },
+                {
+                    icon: 'fas fa-stopwatch',
+                    iconColor: '#d69e2e',
+                    title: 'Avg Response Time',
+                    value: analyticsSummary.responseTimeStats.avg.toFixed(1),
+                    subtitle: 'Hours'
+                },
+                {
+                    icon: 'fas fa-star',
+                    iconColor: '#e53e3e',
+                    title: 'Avg Performance',
+                    value: analyticsSummary.performanceStats.avg.toFixed(1),
+                    subtitle: 'Out of 5'
+                },
+                {
+                    icon: 'fas fa-sitemap',
+                    iconColor: '#805ad5',
+                    title: 'Regulation Areas',
+                    value: Object.keys(analyticsSummary.regulationAreas).length,
+                    subtitle: 'Unique areas'
+                }
+            ];
+            
+            statsSummary.innerHTML = statsCards.map(card => `
+                <div class="stat-card">
+                    <div class="stat-icon" style="background-color: ${card.iconColor}20; color: ${card.iconColor};">
+                        <i class="${card.icon}"></i>
+                    </div>
+                    <div class="stat-content">
+                        <h3>${card.title}</h3>
+                        <div class="stat-value">${card.value}</div>
+                        <div class="stat-subtitle">${card.subtitle}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Create demographics chart (age groups and gender)
+        function createDemographicsChart() {
+            const container = document.getElementById('demographicsChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('demographicsLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#demographicsChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Prepare age group data
+            const ageData = Object.entries(analyticsSummary.ageGroups)
+                .map(([ageGroup, count]) => ({ ageGroup, count }))
+                .sort((a, b) => a.count - b.count);
+            
+            // X scale for age groups
+            const x = d3.scaleBand()
+                .domain(ageData.map(d => d.ageGroup))
+                .range([0, width])
+                .padding(0.2);
+            
+            // Y scale for counts
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(ageData, d => d.count)])
+                .nice()
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x))
+                .selectAll('text')
+                .style('text-anchor', 'middle');
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add bars
+            svg.selectAll('.age-bar')
+                .data(ageData)
+                .enter()
+                .append('rect')
+                .attr('class', 'age-bar')
+                .attr('x', d => x(d.ageGroup))
+                .attr('y', d => y(d.count))
+                .attr('width', x.bandwidth())
+                .attr('height', d => height - y(d.count))
+                .attr('fill', (d, i) => colorScale(i))
+                .attr('rx', 4)
+                .attr('ry', 4)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>${d.ageGroup} Age Group</strong><br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add labels on bars
+            svg.selectAll('.age-label')
+                .data(ageData)
+                .enter()
+                .append('text')
+                .attr('class', 'age-label')
+                .attr('x', d => x(d.ageGroup) + x.bandwidth() / 2)
+                .attr('y', d => y(d.count) - 5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.count)
+                .style('font-weight', 'bold')
+                .style('fill', '#2c5282');
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Age Group')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Create legend
+            const genderData = [
+                { label: 'Male', count: analyticsSummary.genderCount.Male, color: '#2c5282' },
+                { label: 'Female', count: analyticsSummary.genderCount.Female, color: '#d53f8c' }
+            ];
+            
+            legend.innerHTML = genderData.map(item => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${item.color};"></div>
+                    <span>${item.label}: ${item.count} tickets (${((item.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%)</span>
+                </div>
+            `).join('');
+        }
+        
+        // Create regulation area chart (pie chart)
+        function createRegulationAreaChart() {
+            const container = document.getElementById('regulationChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('regulationLegend');
+            legend.innerHTML = '';
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const radius = Math.min(width, height) / 2 - 20;
+            
+            const svg = d3.select('#regulationChart')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .append('g')
+                .attr('transform', `translate(${width/2},${height/2})`);
+            
+            // Prepare regulation area data
+            const regulationData = Object.entries(analyticsSummary.regulationAreas)
+                .map(([area, count]) => ({ area, count }))
+                .sort((a, b) => b.count - a.count);
+            
+            // Limit to top 8 areas for readability
+            const topRegulations = regulationData.slice(0, 8);
+            
+            // Create pie layout
+            const pie = d3.pie()
+                .value(d => d.count)
+                .sort(null);
+            
+            // Create arc generator
+            const arc = d3.arc()
+                .innerRadius(0)
+                .outerRadius(radius);
+            
+            // Create outer arc for labels
+            const outerArc = d3.arc()
+                .innerRadius(radius * 1.1)
+                .outerRadius(radius * 1.1);
+            
+            // Generate arcs
+            const arcs = pie(topRegulations);
+            
+            // Color scale for regulation areas
+            const regulationColor = d3.scaleOrdinal()
+                .domain(topRegulations.map(d => d.area))
+                .range(colorScale.range());
+            
+            // Draw arcs
+            svg.selectAll('path')
+                .data(arcs)
+                .enter()
+                .append('path')
+                .attr('d', arc)
+                .attr('fill', d => regulationColor(d.data.area))
+                .attr('stroke', 'white')
+                .style('stroke-width', '2px')
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>${d.data.area}</strong><br/>
+                        Tickets: ${d.data.count}<br/>
+                        Percentage: ${((d.data.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                    
+                    d3.select(this).transition()
+                        .duration(200)
+                        .attr('transform', 'scale(1.05)');
+                })
+                .on('mouseout', function(event, d) {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                    d3.select(this).transition()
+                        .duration(200)
+                        .attr('transform', 'scale(1)');
+                });
+            
+            // Add labels
+            svg.selectAll('text')
+                .data(arcs)
+                .enter()
+                .append('text')
+                .attr('transform', d => {
+                    const pos = outerArc.centroid(d);
+                    return `translate(${pos[0]},${pos[1]})`;
+                })
+                .attr('dy', '.35em')
+                .style('text-anchor', d => {
+                    const midangle = d.startAngle + (d.endAngle - d.startAngle) / 2;
+                    return (midangle < Math.PI) ? 'start' : 'end';
+                })
+                .text(d => d.data.area)
+                .style('font-size', '12px')
+                .style('fill', '#2c5282')
+                .style('font-weight', 'bold');
+            
+            // Create legend
+            legend.innerHTML = topRegulations.map((item, i) => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${regulationColor(item.area)};"></div>
+                    <span>${item.area}: ${item.count}</span>
+                </div>
+            `).join('');
+        }
+        
+        // Create problem type chart (horizontal bar chart)
+        function createProblemTypeChart() {
+            const container = document.getElementById('problemChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('problemLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 40, left: 150 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#problemChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Prepare problem type data
+            const problemData = Object.entries(analyticsSummary.problemTypes)
+                .map(([problem, count]) => ({ problem, count }))
+                .sort((a, b) => b.count - a.count);
+            
+            // Limit to top 10 problems for readability
+            const topProblems = problemData.slice(0, 10);
+            
+            // Y scale for problems
+            const y = d3.scaleBand()
+                .domain(topProblems.map(d => d.problem))
+                .range([0, height])
+                .padding(0.2);
+            
+            // X scale for counts
+            const x = d3.scaleLinear()
+                .domain([0, d3.max(topProblems, d => d.count)])
+                .nice()
+                .range([0, width]);
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x));
+            
+            // Add bars
+            svg.selectAll('.problem-bar')
+                .data(topProblems)
+                .enter()
+                .append('rect')
+                .attr('class', 'problem-bar')
+                .attr('x', 0)
+                .attr('y', d => y(d.problem))
+                .attr('width', d => x(d.count))
+                .attr('height', y.bandwidth())
+                .attr('fill', (d, i) => colorScale(i))
+                .attr('rx', 4)
+                .attr('ry', 4)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>${d.problem}</strong><br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add value labels on bars
+            svg.selectAll('.problem-label')
+                .data(topProblems)
+                .enter()
+                .append('text')
+                .attr('class', 'problem-label')
+                .attr('x', d => x(d.count) + 5)
+                .attr('y', d => y(d.problem) + y.bandwidth() / 2)
+                .attr('dy', '.35em')
+                .text(d => d.count)
+                .style('font-weight', 'bold')
+                .style('fill', '#2c5282');
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Add chart title inside
+            svg.append('text')
+                .attr('x', width / 2)
+                .attr('y', -10)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('font-weight', 'bold')
+                .style('fill', '#4a6fa5')
+                .text('Top 10 Most Common Problems');
+            
+            // Create legend
+            legend.innerHTML = `<div class="legend-item">
+                <span>Showing top 10 most common problems out of ${Object.keys(analyticsSummary.problemTypes).length} unique problem types</span>
+            </div>`;
+        }
+        
+        // Create response time chart (histogram)
+        function createResponseTimeChart() {
+            const container = document.getElementById('responseTimeChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('responseTimeLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#responseTimeChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Extract response times
+            const responseTimes = closedTicketsData
+                .map(ticket => ticket['Response Time'])
+                .filter(time => time > 0);
+            
+            // Create histogram bins
+            const histogram = d3.bin()
+                .thresholds(10) // Number of bins
+                .value(d => d);
+            
+            const bins = histogram(responseTimes);
+            
+            // X scale for response time
+            const x = d3.scaleLinear()
+                .domain([0, d3.max(bins, d => d.x1)])
+                .range([0, width]);
+            
+            // Y scale for frequency
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(bins, d => d.length)])
+                .nice()
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => d + 'h'));
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add bars
+            svg.selectAll('rect')
+                .data(bins)
+                .enter()
+                .append('rect')
+                .attr('x', d => x(d.x0) + 1)
+                .attr('y', d => y(d.length))
+                .attr('width', d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+                .attr('height', d => height - y(d.length))
+                .attr('fill', '#4a6fa5')
+                .attr('opacity', 0.8)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>Response Time: ${d.x0}h to ${d.x1}h</strong><br/>
+                        Tickets: ${d.length}<br/>
+                        Percentage: ${((d.length / responseTimes.length) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add average line
+            const avgResponseTime = analyticsSummary.responseTimeStats.avg;
+            svg.append('line')
+                .attr('x1', x(avgResponseTime))
+                .attr('x2', x(avgResponseTime))
+                .attr('y1', 0)
+                .attr('y2', height)
+                .attr('stroke', '#e53e3e')
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '5,5');
+            
+            // Add average label
+            svg.append('text')
+                .attr('x', x(avgResponseTime) + 5)
+                .attr('y', 20)
+                .text(`Avg: ${avgResponseTime.toFixed(1)}h`)
+                .style('font-size', '12px')
+                .style('fill', '#e53e3e')
+                .style('font-weight', 'bold');
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Response Time (hours)')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Create legend
+            legend.innerHTML = `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #4a6fa5;"></div>
+                    <span>Response Time Distribution</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #e53e3e; height: 2px; margin-top: 7px;"></div>
+                    <span>Average: ${avgResponseTime.toFixed(1)} hours</span>
+                </div>
+            `;
+        }
+        
+        // Create performance chart (box plot or bar chart)
+        function createPerformanceChart() {
+            const container = document.getElementById('performanceChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('performanceLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#performanceChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Group performance by rating (rounded to nearest 0.5)
+            const performanceGroups = {};
+            closedTicketsData.forEach(ticket => {
+                if (ticket['Average Performance'] > 0) {
+                    const rating = Math.round(ticket['Average Performance'] * 2) / 2; // Round to nearest 0.5
+                    if (!performanceGroups[rating]) {
+                        performanceGroups[rating] = [];
+                    }
+                    performanceGroups[rating].push(ticket);
+                }
+            });
+            
+            // Convert to array
+            const performanceData = Object.entries(performanceGroups)
+                .map(([rating, tickets]) => ({
+                    rating: parseFloat(rating),
+                    count: tickets.length,
+                    tickets: tickets
+                }))
+                .sort((a, b) => a.rating - b.rating);
+            
+            // X scale for ratings
+            const x = d3.scaleBand()
+                .domain(performanceData.map(d => d.rating))
+                .range([0, width])
+                .padding(0.2);
+            
+            // Y scale for counts
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(performanceData, d => d.count)])
+                .nice()
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => d.toFixed(1)));
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add bars
+            svg.selectAll('.performance-bar')
+                .data(performanceData)
+                .enter()
+                .append('rect')
+                .attr('class', 'performance-bar')
+                .attr('x', d => x(d.rating))
+                .attr('y', d => y(d.count))
+                .attr('width', x.bandwidth())
+                .attr('height', d => height - y(d.count))
+                .attr('fill', d => {
+                    // Color based on rating (green for high, yellow for medium, red for low)
+                    if (d.rating >= 4) return '#38a169';
+                    if (d.rating >= 3) return '#d69e2e';
+                    return '#e53e3e';
+                })
+                .attr('rx', 4)
+                .attr('ry', 4)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>Rating: ${d.rating}/5</strong><br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add value labels on bars
+            svg.selectAll('.performance-label')
+                .data(performanceData)
+                .enter()
+                .append('text')
+                .attr('class', 'performance-label')
+                .attr('x', d => x(d.rating) + x.bandwidth() / 2)
+                .attr('y', d => y(d.count) - 5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.count)
+                .style('font-weight', 'bold')
+                .style('fill', '#2c5282');
+            
+            // Add average line
+            const avgPerformance = analyticsSummary.performanceStats.avg;
+            svg.append('line')
+                .attr('x1', 0)
+                .attr('x2', width)
+                .attr('y1', y(avgPerformance))
+                .attr('y2', y(avgPerformance))
+                .attr('stroke', '#2c5282')
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '5,5');
+            
+            // Add average label
+            svg.append('text')
+                .attr('x', width - 5)
+                .attr('y', y(avgPerformance) - 5)
+                .text(`Avg: ${avgPerformance.toFixed(1)}`)
+                .style('font-size', '12px')
+                .style('fill', '#2c5282')
+                .style('font-weight', 'bold')
+                .style('text-anchor', 'end');
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Performance Rating (1-5 scale)')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Create legend
+            legend.innerHTML = `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #38a169;"></div>
+                    <span>High Performance (4.0+)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #d69e2e;"></div>
+                    <span>Medium Performance (3.0-3.9)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #e53e3e;"></div>
+                    <span>Low Performance (&lt;3.0)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
+                    <span>Average: ${avgPerformance.toFixed(1)}/5</span>
+                </div>
+            `;
+        }
+        
+        // Create correlation chart (scatter plot)
+        function createCorrelationChart() {
+            const container = document.getElementById('correlationChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('correlationLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#correlationChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Prepare correlation data
+            const correlationData = closedTicketsData
+                .filter(ticket => ticket['Response Time'] > 0 && ticket['Average Performance'] > 0)
+                .map(ticket => ({
+                    responseTime: ticket['Response Time'],
+                    performance: ticket['Average Performance'],
+                    regulationArea: ticket['Regulation Area'] || 'Unknown'
+                }));
+            
+            // X scale for response time
+            const x = d3.scaleLinear()
+                .domain([0, d3.max(correlationData, d => d.responseTime)])
+                .nice()
+                .range([0, width]);
+            
+            // Y scale for performance
+            const y = d3.scaleLinear()
+                .domain([0, 5]) // Performance is 1-5 scale
+                .nice()
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => d + 'h'));
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add grid lines
+            svg.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickSize(-height).tickFormat(''));
+            
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+            
+            // Add dots
+            svg.selectAll('.correlation-dot')
+                .data(correlationData)
+                .enter()
+                .append('circle')
+                .attr('class', 'correlation-dot')
+                .attr('cx', d => x(d.responseTime))
+                .attr('cy', d => y(d.performance))
+                .attr('r', 6)
+                .attr('fill', d => {
+                    // Color by regulation area
+                    const area = d.regulationArea;
+                    const hash = area.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                    return colorScale(hash % 8);
+                })
+                .attr('opacity', 0.7)
+                .attr('stroke', 'white')
+                .attr('stroke-width', 1)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>Regulation Area: ${d.regulationArea}</strong><br/>
+                        Response Time: ${d.responseTime.toFixed(1)} hours<br/>
+                        Performance: ${d.performance.toFixed(1)}/5
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Calculate correlation coefficient
+            const correlation = calculateCorrelation(correlationData);
+            
+            // Add correlation line if there's a correlation
+            if (Math.abs(correlation) > 0.1) {
+                const regression = linearRegression(correlationData);
+                
+                svg.append('line')
+                    .attr('x1', x(0))
+                    .attr('x2', x(d3.max(correlationData, d => d.responseTime)))
+                    .attr('y1', y(regression.intercept))
+                    .attr('y2', y(regression.intercept + regression.slope * d3.max(correlationData, d => d.responseTime)))
+                    .attr('stroke', '#e53e3e')
+                    .attr('stroke-width', 2)
+                    .attr('stroke-dasharray', '5,5');
+            }
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Response Time (hours)')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Performance Rating (1-5)')
+                .style('fill', '#64748b');
+            
+            // Add correlation coefficient text
+            svg.append('text')
+                .attr('x', width - 10)
+                .attr('y', 20)
+                .text(`Correlation: ${correlation.toFixed(2)}`)
+                .style('font-size', '14px')
+                .style('fill', '#2c5282')
+                .style('font-weight', 'bold')
+                .style('text-anchor', 'end');
+            
+            // Create legend
+            legend.innerHTML = `
+                <div class="legend-item">
+                    <span>Each dot represents one closed ticket</span>
+                </div>
+                <div class="legend-item">
+                    <span>Correlation between response time and performance: ${correlation.toFixed(2)}</span>
+                </div>
+                ${Math.abs(correlation) > 0.1 ? `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #e53e3e; height: 2px; margin-top: 7px;"></div>
+                    <span>Regression line (trend)</span>
+                </div>
+                ` : ''}
+            `;
+        }
+        
+        // Helper function to calculate correlation coefficient
+        function calculateCorrelation(data) {
+            if (data.length < 2) return 0;
+            
+            const n = data.length;
+            const sumX = data.reduce((sum, d) => sum + d.responseTime, 0);
+            const sumY = data.reduce((sum, d) => sum + d.performance, 0);
+            const sumXY = data.reduce((sum, d) => sum + d.responseTime * d.performance, 0);
+            const sumX2 = data.reduce((sum, d) => sum + d.responseTime * d.responseTime, 0);
+            const sumY2 = data.reduce((sum, d) => sum + d.performance * d.performance, 0);
+            
+            const numerator = n * sumXY - sumX * sumY;
+            const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+            
+            return denominator === 0 ? 0 : numerator / denominator;
+        }
+        
+        // Helper function for linear regression
+        function linearRegression(data) {
+            const n = data.length;
+            const sumX = data.reduce((sum, d) => sum + d.responseTime, 0);
+            const sumY = data.reduce((sum, d) => sum + d.performance, 0);
+            const sumXY = data.reduce((sum, d) => sum + d.responseTime * d.performance, 0);
+            const sumX2 = data.reduce((sum, d) => sum + d.responseTime * d.responseTime, 0);
+            
+            const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+            const intercept = (sumY - slope * sumX) / n;
+            
+            return { slope, intercept };
+        }
+        
+        // Initialize the dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadClosedTicketsData();
+            
+            // Auto-refresh every 10 minutes
+            setInterval(loadClosedTicketsData, 10 * 60 * 1000);
+        });
+    </script>
+</body>
+</html>
