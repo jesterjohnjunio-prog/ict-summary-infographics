@@ -7,7 +7,13 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        * { 
+            box-sizing: border-box; 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        }
+        
         body { 
             background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%);
             color: #333;
@@ -255,7 +261,7 @@
             }
         }
         
-        /* Custom color classes for charts */
+        /* Color classes */
         .color-1 { background-color: #4a6fa5; }
         .color-2 { background-color: #2c5282; }
         .color-3 { background-color: #38a169; }
@@ -265,11 +271,9 @@
         .color-7 { background-color: #dd6b20; }
         .color-8 { background-color: #319795; }
         
-        /* Gender specific colors */
         .gender-male { background-color: #2c5282; }
         .gender-female { background-color: #d53f8c; }
         
-        /* Age group colors */
         .age-young { background-color: #38a169; }
         .age-middle { background-color: #d69e2e; }
         .age-senior { background-color: #e53e3e; }
@@ -323,12 +327,12 @@
                 <div class="legend" id="problemLegend"></div>
             </div>
             
-            <!-- Chart 4: Response Time Performance -->
+            <!-- Chart 4: Response Time Performance (UPDATED) -->
             <div class="chart-card">
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-stopwatch"></i> Response Time Analysis</div>
-                        <div class="chart-subtitle">Distribution of response times for closed tickets</div>
+                        <div class="chart-subtitle">Distribution by response time categories</div>
                     </div>
                 </div>
                 <div class="chart-container" id="responseTimeChart"></div>
@@ -410,12 +414,22 @@
             statsSummary.innerHTML = '';
             
             try {
-                // Use CSV export from the Closed Tickets sheet
-                const csvUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSlQLcK_Ktw2zemNHDZ_70giWPqT54Mvoci_dJxQz1RWYhe94UaDQLPQU89DUYLTY-ow7s2sWa-PB0h/pub?gid=1210338777&single=true&output=csv';
+                // Use CORS proxy for better compatibility
+                const originalUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSlQLcK_Ktw2zemNHDZ_70giWPqT54Mvoci_dJxQz1RWYhe94UaDQLPQU89DUYLTY-ow7s2sWa-PB0h/pub?gid=1210338777&single=true&output=csv';
+                const corsProxy = 'https://api.allorigins.win/raw?url=';
+                const csvUrl = corsProxy + encodeURIComponent(originalUrl);
                 
                 console.log('Loading closed tickets from:', csvUrl);
                 
-                const response = await fetch(csvUrl);
+                let response;
+                try {
+                    response = await fetch(csvUrl);
+                } catch (proxyError) {
+                    // Fall back to direct access if proxy fails
+                    console.log('CORS proxy failed, trying direct access...');
+                    response = await fetch(originalUrl);
+                }
+                
                 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
                 
                 const csvText = await response.text();
@@ -524,7 +538,15 @@
                 // Problem type analysis
                 problemTypes: {},
                 
-                // Response time analysis
+                // Response time analysis - UPDATED with categories
+                responseTimeCategories: {
+                    'Less than 1 hour': { label: 'Less than 1 hour', count: 0 },
+                    'Within the day': { label: 'Within the day (1-8 hrs)', count: 0 },
+                    'The next day': { label: 'The next day (8-16 hrs)', count: 0 },
+                    'More than 2 days': { label: 'More than 2 days (>16 hrs)', count: 0 }
+                },
+                
+                // Original response time stats (for backward compatibility)
                 responseTimeStats: {
                     min: Infinity,
                     max: 0,
@@ -591,16 +613,29 @@
                     analyticsSummary.problemTypes[problem] = (analyticsSummary.problemTypes[problem] || 0) + 1;
                 }
                 
-                // Response time analysis
-                if (ticket['Response Time'] > 0) {
-                    responseTimeSum += ticket['Response Time'];
+                // Response time analysis - UPDATED with categories
+                const responseTime = ticket['Response Time'];
+                if (responseTime > 0) {
+                    // Update category counts
+                    if (responseTime < 1) {
+                        analyticsSummary.responseTimeCategories['Less than 1 hour'].count++;
+                    } else if (responseTime >= 1 && responseTime <= 8) {
+                        analyticsSummary.responseTimeCategories['Within the day'].count++;
+                    } else if (responseTime > 8 && responseTime <= 16) {
+                        analyticsSummary.responseTimeCategories['The next day'].count++;
+                    } else if (responseTime > 16) {
+                        analyticsSummary.responseTimeCategories['More than 2 days'].count++;
+                    }
+                    
+                    // Update numeric stats
+                    responseTimeSum += responseTime;
                     validResponseTimeCount++;
                     
-                    if (ticket['Response Time'] < analyticsSummary.responseTimeStats.min) {
-                        analyticsSummary.responseTimeStats.min = ticket['Response Time'];
+                    if (responseTime < analyticsSummary.responseTimeStats.min) {
+                        analyticsSummary.responseTimeStats.min = responseTime;
                     }
-                    if (ticket['Response Time'] > analyticsSummary.responseTimeStats.max) {
-                        analyticsSummary.responseTimeStats.max = ticket['Response Time'];
+                    if (responseTime > analyticsSummary.responseTimeStats.max) {
+                        analyticsSummary.responseTimeStats.max = responseTime;
                     }
                 }
                 
@@ -639,11 +674,18 @@
         // Create summary statistics cards
         function createSummaryStats() {
             const statsSummary = document.getElementById('statsSummary');
-
-        // Calculate the fastest response category
+            
+            // Calculate response time category percentages
             const responseCategories = analyticsSummary.responseTimeCategories;
-            const fastestCategory = Object.values(responseCategories).reduce((prev, current) => 
-            (prev.count > current.count) ? prev : current);
+            const totalWithResponseTime = 
+                responseCategories['Less than 1 hour'].count +
+                responseCategories['Within the day'].count +
+                responseCategories['The next day'].count +
+                responseCategories['More than 2 days'].count;
+            
+            const fastestResponseCategory = Object.values(responseCategories).reduce((prev, current) => 
+                (prev.count > current.count) ? prev : current
+            );
             
             const statsCards = [
                 {
@@ -668,11 +710,11 @@
                     subtitle: 'Male:Female'
                 },
                 {
-                    icon: 'fas fa-stopwatch',
-                    iconColor: '#d69e2e',
-                    title: 'Avg Response Time',
-                    value: analyticsSummary.responseTimeStats.avg.toFixed(1),
-                    subtitle: 'Hours'
+                    icon: 'fas fa-bolt',
+                    iconColor: '#38a169',
+                    title: 'Fastest Response',
+                    value: `${fastestResponseCategory.label.split(' ')[0]}`,
+                    subtitle: `${fastestResponseCategory.count} tickets`
                 },
                 {
                     icon: 'fas fa-star',
@@ -682,31 +724,12 @@
                     subtitle: 'Out of 5'
                 },
                 {
-                    icon: 'fas fa-sitemap',
-                    iconColor: '#805ad5',
-                    title: 'Regulation Areas',
-                    value: Object.keys(analyticsSummary.regulationAreas).length,
-                    subtitle: 'Unique areas'
-                }
-
-                // New response time classification cards
-                {
-                    icon: 'fas fa-bolt',
-                    iconColor: '#38a169',
-                    title: 'Fastest Response',
-                    value: `${fastestCategory.label.split(' ')[0]}`,
-                    subtitle: `${fastestCategory.count} tickets`
-                },
-                {
                     icon: 'fas fa-percentage',
                     iconColor: '#4a6fa5',
                     title: '<1 Hour Response',
-                    value: `${((responseCategories.lessThan1Hour.count / 
-                            (responseCategories.lessThan1Hour.count + 
-                             responseCategories.withinTheDay.count + 
-                             responseCategories.nextDay.count + 
-                             responseCategories.moreThan2Days.count)) * 100).toFixed(0)}%`,
-                    subtitle: 'Immediate resolution'
+                    value: totalWithResponseTime > 0 ? 
+                        `${Math.round((responseCategories['Less than 1 hour'].count / totalWithResponseTime) * 100)}%` : '0%',
+                    subtitle: 'Immediate resolution rate'
                 }
             ];
             
@@ -827,7 +850,7 @@
                 .text('Number of Tickets')
                 .style('fill', '#64748b');
             
-            // Create legend
+            // Create legend for gender
             const genderData = [
                 { label: 'Male', count: analyticsSummary.genderCount.Male, color: '#2c5282' },
                 { label: 'Female', count: analyticsSummary.genderCount.Female, color: '#d53f8c' }
@@ -1058,7 +1081,7 @@
             </div>`;
         }
         
-        // Create response time chart (histogram)
+        // UPDATED: Create response time chart with categories
         function createResponseTimeChart() {
             const container = document.getElementById('responseTimeChart');
             container.innerHTML = '';
@@ -1076,55 +1099,75 @@
                 .append('g')
                 .attr('transform', `translate(${margin.left},${margin.top})`);
             
-            // Extract response times
-            const responseTimes = closedTicketsData
-                .map(ticket => ticket['Response Time'])
-                .filter(time => time > 0);
+            // Prepare response time category data
+            const responseTimeData = [
+                { 
+                    label: 'Less than 1 hour', 
+                    description: '<1 hr',
+                    count: analyticsSummary.responseTimeCategories['Less than 1 hour'].count,
+                    color: '#38a169'
+                },
+                { 
+                    label: 'Within the day', 
+                    description: '1-8 hrs',
+                    count: analyticsSummary.responseTimeCategories['Within the day'].count,
+                    color: '#d69e2e'
+                },
+                { 
+                    label: 'The next day', 
+                    description: '8-16 hrs',
+                    count: analyticsSummary.responseTimeCategories['The next day'].count,
+                    color: '#ed8936'
+                },
+                { 
+                    label: 'More than 2 days', 
+                    description: '>16 hrs',
+                    count: analyticsSummary.responseTimeCategories['More than 2 days'].count,
+                    color: '#e53e3e'
+                }
+            ];
             
-            // Create histogram bins
-            const histogram = d3.bin()
-                .thresholds(10) // Number of bins
-                .value(d => d);
+            // X scale for categories
+            const x = d3.scaleBand()
+                .domain(responseTimeData.map(d => d.description))
+                .range([0, width])
+                .padding(0.3);
             
-            const bins = histogram(responseTimes);
-            
-            // X scale for response time
-            const x = d3.scaleLinear()
-                .domain([0, d3.max(bins, d => d.x1)])
-                .range([0, width]);
-            
-            // Y scale for frequency
+            // Y scale for counts
             const y = d3.scaleLinear()
-                .domain([0, d3.max(bins, d => d.length)])
+                .domain([0, d3.max(responseTimeData, d => d.count)])
                 .nice()
                 .range([height, 0]);
             
             // Add X axis
             svg.append('g')
                 .attr('transform', `translate(0,${height})`)
-                .call(d3.axisBottom(x).tickFormat(d => d + 'h'));
+                .call(d3.axisBottom(x));
             
             // Add Y axis
             svg.append('g')
                 .call(d3.axisLeft(y));
             
             // Add bars
-            svg.selectAll('rect')
-                .data(bins)
+            svg.selectAll('.response-bar')
+                .data(responseTimeData)
                 .enter()
                 .append('rect')
-                .attr('x', d => x(d.x0) + 1)
-                .attr('y', d => y(d.length))
-                .attr('width', d => Math.max(0, x(d.x1) - x(d.x0) - 1))
-                .attr('height', d => height - y(d.length))
-                .attr('fill', '#4a6fa5')
-                .attr('opacity', 0.8)
+                .attr('class', 'response-bar')
+                .attr('x', d => x(d.description))
+                .attr('y', d => y(d.count))
+                .attr('width', x.bandwidth())
+                .attr('height', d => height - y(d.count))
+                .attr('fill', d => d.color)
+                .attr('rx', 4)
+                .attr('ry', 4)
                 .on('mouseover', function(event, d) {
                     tooltip.transition().duration(200).style('opacity', .9);
                     tooltip.html(`
-                        <strong>Response Time: ${d.x0}h to ${d.x1}h</strong><br/>
-                        Tickets: ${d.length}<br/>
-                        Percentage: ${((d.length / responseTimes.length) * 100).toFixed(1)}%
+                        <strong>${d.label}</strong><br/>
+                        Time Range: ${d.description}<br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${calculateResponseTimePercentage(d.label)}%
                     `)
                     .style('left', (event.pageX + 10) + 'px')
                     .style('top', (event.pageY - 28) + 'px');
@@ -1133,31 +1176,48 @@
                     tooltip.transition().duration(500).style('opacity', 0);
                 });
             
-            // Add average line
+            // Add value labels on bars
+            svg.selectAll('.response-label')
+                .data(responseTimeData)
+                .enter()
+                .append('text')
+                .attr('class', 'response-label')
+                .attr('x', d => x(d.description) + x.bandwidth() / 2)
+                .attr('y', d => y(d.count) - 5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.count)
+                .style('font-weight', 'bold')
+                .style('fill', '#2c5282');
+            
+            // Calculate total tickets with response time
+            const totalResponseTickets = responseTimeData.reduce((sum, d) => sum + d.count, 0);
+            
+            // Add average response time line
             const avgResponseTime = analyticsSummary.responseTimeStats.avg;
             svg.append('line')
-                .attr('x1', x(avgResponseTime))
-                .attr('x2', x(avgResponseTime))
-                .attr('y1', 0)
-                .attr('y2', height)
-                .attr('stroke', '#e53e3e')
+                .attr('x1', 0)
+                .attr('x2', width)
+                .attr('y1', y(avgResponseTime))
+                .attr('y2', y(avgResponseTime))
+                .attr('stroke', '#2c5282')
                 .attr('stroke-width', 2)
                 .attr('stroke-dasharray', '5,5');
             
             // Add average label
             svg.append('text')
-                .attr('x', x(avgResponseTime) + 5)
-                .attr('y', 20)
+                .attr('x', width - 5)
+                .attr('y', y(avgResponseTime) - 5)
                 .text(`Avg: ${avgResponseTime.toFixed(1)}h`)
                 .style('font-size', '12px')
-                .style('fill', '#e53e3e')
-                .style('font-weight', 'bold');
+                .style('fill', '#2c5282')
+                .style('font-weight', 'bold')
+                .style('text-anchor', 'end');
             
             // Add X axis label
             svg.append('text')
                 .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
                 .style('text-anchor', 'middle')
-                .text('Response Time (hours)')
+                .text('Response Time Categories')
                 .style('fill', '#64748b');
             
             // Add Y axis label
@@ -1170,20 +1230,44 @@
                 .text('Number of Tickets')
                 .style('fill', '#64748b');
             
-            // Create legend
-            legend.innerHTML = `
+            // Add chart title
+            svg.append('text')
+                .attr('x', width / 2)
+                .attr('y', -10)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('font-weight', 'bold')
+                .style('fill', '#4a6fa5')
+                .text('Response Time Distribution by Category');
+            
+            // Calculate percentages for legend
+            function calculateResponseTimePercentage(categoryLabel) {
+                const category = responseTimeData.find(d => d.label === categoryLabel);
+                if (!category || totalResponseTickets === 0) return 0;
+                return ((category.count / totalResponseTickets) * 100).toFixed(1);
+            }
+            
+            // Create detailed legend
+            legend.innerHTML = responseTimeData.map(category => {
+                const percentage = calculateResponseTimePercentage(category.label);
+                return `
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: ${category.color};"></div>
+                        <span>${category.label} (${category.description}): ${category.count} tickets (${percentage}%)</span>
+                    </div>
+                `;
+            }).join('');
+            
+            // Add average to legend
+            legend.innerHTML += `
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #4a6fa5;"></div>
-                    <span>Response Time Distribution</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #e53e3e; height: 2px; margin-top: 7px;"></div>
-                    <span>Average: ${avgResponseTime.toFixed(1)} hours</span>
+                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
+                    <span>Average Response Time: ${avgResponseTime.toFixed(1)} hours</span>
                 </div>
             `;
         }
         
-        // Create performance chart (box plot or bar chart)
+        // Create performance chart
         function createPerformanceChart() {
             const container = document.getElementById('performanceChart');
             container.innerHTML = '';
@@ -1415,10 +1499,11 @@
                 .attr('cy', d => y(d.performance))
                 .attr('r', 6)
                 .attr('fill', d => {
-                    // Color by regulation area
-                    const area = d.regulationArea;
-                    const hash = area.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                    return colorScale(hash % 8);
+                    // Color by response time category
+                    if (d.responseTime < 1) return '#38a169';
+                    if (d.responseTime <= 8) return '#d69e2e';
+                    if (d.responseTime <= 16) return '#ed8936';
+                    return '#e53e3e';
                 })
                 .attr('opacity', 0.7)
                 .attr('stroke', 'white')
@@ -1449,7 +1534,7 @@
                     .attr('x2', x(d3.max(correlationData, d => d.responseTime)))
                     .attr('y1', y(regression.intercept))
                     .attr('y2', y(regression.intercept + regression.slope * d3.max(correlationData, d => d.responseTime)))
-                    .attr('stroke', '#e53e3e')
+                    .attr('stroke', '#2c5282')
                     .attr('stroke-width', 2)
                     .attr('stroke-dasharray', '5,5');
             }
@@ -1481,17 +1566,33 @@
                 .style('font-weight', 'bold')
                 .style('text-anchor', 'end');
             
+            // Add response time category legend
+            const responseColors = [
+                { label: '<1 hour', color: '#38a169' },
+                { label: '1-8 hours', color: '#d69e2e' },
+                { label: '8-16 hours', color: '#ed8936' },
+                { label: '>16 hours', color: '#e53e3e' }
+            ];
+            
+            const colorLegend = responseColors.map(item => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${item.color};"></div>
+                    <span>${item.label}</span>
+                </div>
+            `).join('');
+            
             // Create legend
             legend.innerHTML = `
                 <div class="legend-item">
                     <span>Each dot represents one closed ticket</span>
                 </div>
+                ${colorLegend}
                 <div class="legend-item">
-                    <span>Correlation between response time and performance: ${correlation.toFixed(2)}</span>
+                    <span>Correlation coefficient: ${correlation.toFixed(2)}</span>
                 </div>
                 ${Math.abs(correlation) > 0.1 ? `
                 <div class="legend-item">
-                    <div class="legend-color" style="background-color: #e53e3e; height: 2px; margin-top: 7px;"></div>
+                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
                     <span>Regression line (trend)</span>
                 </div>
                 ` : ''}
@@ -1538,5 +1639,4 @@
         });
     </script>
 </body>
-
 </html>
