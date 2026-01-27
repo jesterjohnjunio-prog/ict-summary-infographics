@@ -639,6 +639,11 @@
         // Create summary statistics cards
         function createSummaryStats() {
             const statsSummary = document.getElementById('statsSummary');
+
+        // Calculate the fastest response category
+            const responseCategories = analyticsSummary.responseTimeCategories;
+            const fastestCategory = Object.values(responseCategories).reduce((prev, current) => 
+            (prev.count > current.count) ? prev : current);
             
             const statsCards = [
                 {
@@ -682,6 +687,26 @@
                     title: 'Regulation Areas',
                     value: Object.keys(analyticsSummary.regulationAreas).length,
                     subtitle: 'Unique areas'
+                }
+
+                // New response time classification cards
+                {
+                    icon: 'fas fa-bolt',
+                    iconColor: '#38a169',
+                    title: 'Fastest Response',
+                    value: `${fastestCategory.label.split(' ')[0]}`,
+                    subtitle: `${fastestCategory.count} tickets`
+                },
+                {
+                    icon: 'fas fa-percentage',
+                    iconColor: '#4a6fa5',
+                    title: '<1 Hour Response',
+                    value: `${((responseCategories.lessThan1Hour.count / 
+                            (responseCategories.lessThan1Hour.count + 
+                             responseCategories.withinTheDay.count + 
+                             responseCategories.nextDay.count + 
+                             responseCategories.moreThan2Days.count)) * 100).toFixed(0)}%`,
+                    subtitle: 'Immediate resolution'
                 }
             ];
             
@@ -1513,4 +1538,5 @@
         });
     </script>
 </body>
+
 </html>
