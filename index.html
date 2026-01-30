@@ -1729,45 +1729,952 @@
             `).join('');
         }
         
-        // All your existing chart functions remain unchanged below...
         // Create demographics chart (age groups and gender) - OPTION 1: Grouped Bar Chart
         function createDemographicsChart() {
-            // ... your existing function code ...
+            const container = document.getElementById('demographicsChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('demographicsLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#demographicsChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Prepare combined age and gender data
+            const ageGenderData = {};
+            
+            closedTicketsData.forEach(ticket => {
+                if (ticket.Age && ticket.Sex) {
+                    const age = parseInt(ticket.Age);
+                    if (!isNaN(age)) {
+                        let ageGroup;
+                        if (age <= 25) ageGroup = '18-25';
+                        else if (age <= 35) ageGroup = '26-35';
+                        else if (age <= 45) ageGroup = '36-45';
+                        else if (age <= 55) ageGroup = '46-55';
+                        else ageGroup = '56+';
+                        
+                        const gender = ticket.Sex.trim().toLowerCase();
+                        const genderKey = (gender === 'male' || gender === 'm') ? 'Male' : 
+                                         (gender === 'female' || gender === 'f') ? 'Female' : 'Other';
+                        
+                        if (!ageGenderData[ageGroup]) {
+                            ageGenderData[ageGroup] = { 'Male': 0, 'Female': 0, 'Other': 0 };
+                        }
+                        
+                        ageGenderData[ageGroup][genderKey] += 1;
+                    }
+                }
+            });
+            
+            // Convert to array format for d3
+            const ageGroups = Object.keys(ageGenderData).sort();
+            const genders = ['Male', 'Female'];
+            
+            const data = [];
+            ageGroups.forEach(ageGroup => {
+                genders.forEach(gender => {
+                    if (ageGenderData[ageGroup][gender] > 0) {
+                        data.push({
+                            ageGroup: ageGroup,
+                            gender: gender,
+                            count: ageGenderData[ageGroup][gender]
+                        });
+                    }
+                });
+            });
+            
+            // X scale for age groups
+            const x0 = d3.scaleBand()
+                .domain(ageGroups)
+                .range([0, width])
+                .padding(0.2);
+            
+            // X scale for genders within each age group
+            const x1 = d3.scaleBand()
+                .domain(genders)
+                .range([0, x0.bandwidth()])
+                .padding(0.05);
+            
+            // Y scale for counts
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(data, d => d.count)])
+                .nice()
+                .range([height, 0]);
+            
+            // Gender colors
+            const genderColors = {
+                'Male': '#2c5282',
+                'Female': '#d53f8c',
+                'Other': '#94a3b8'
+            };
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x0));
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add bars for each age group and gender
+            const ageGroupsSelection = svg.selectAll('.age-group')
+                .data(ageGroups)
+                .enter()
+                .append('g')
+                .attr('class', 'age-group')
+                .attr('transform', d => `translate(${x0(d)},0)`);
+            
+            ageGroupsSelection.selectAll('.gender-bar')
+                .data(d => genders.map(gender => ({
+                    ageGroup: d,
+                    gender: gender,
+                    count: ageGenderData[d][gender] || 0
+                })))
+                .enter()
+                .append('rect')
+                .attr('class', 'gender-bar')
+                .attr('x', d => x1(d.gender))
+                .attr('y', d => y(d.count))
+                .attr('width', x1.bandwidth())
+                .attr('height', d => height - y(d.count))
+                .attr('fill', d => genderColors[d.gender])
+                .attr('rx', 3)
+                .attr('ry', 3)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>${d.ageGroup} Age Group</strong><br/>
+                        Gender: ${d.gender}<br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add value labels on bars (only if count > 0 and bar is tall enough)
+            ageGroupsSelection.selectAll('.gender-label')
+                .data(d => genders.map(gender => ({
+                    ageGroup: d,
+                    gender: gender,
+                    count: ageGenderData[d][gender] || 0
+                })))
+                .enter()
+                .append('text')
+                .filter(d => d.count > 0 && (height - y(d.count)) > 20) // Only show if bar is tall enough
+                .attr('class', 'gender-label')
+                .attr('x', d => x1(d.gender) + x1.bandwidth() / 2)
+                .attr('y', d => y(d.count) - 5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.count)
+                .style('font-size', '11px')
+                .style('font-weight', 'bold')
+                .style('fill', d => d.gender === 'Female' ? '#d53f8c' : '#2c5282');
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Age Group')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Create legend for gender
+            const genderData = [
+                { label: 'Male', count: analyticsSummary.genderCount.Male, color: '#2c5282' },
+                { label: 'Female', count: analyticsSummary.genderCount.Female, color: '#d53f8c' }
+            ];
+            
+            legend.innerHTML = genderData.map(item => {
+                const percentage = ((item.count / analyticsSummary.totalTickets) * 100).toFixed(1);
+                return `
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: ${item.color};"></div>
+                        <span>${item.label}: ${item.count} tickets (${percentage}%)</span>
+                    </div>
+                `;
+            }).join('');
         }
         
         // Create regulation area chart (pie chart)
         function createRegulationAreaChart() {
-            // ... your existing function code ...
+            const container = document.getElementById('regulationChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('regulationLegend');
+            legend.innerHTML = '';
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            const radius = Math.min(width, height) / 2 - 20;
+            
+            const svg = d3.select('#regulationChart')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .append('g')
+                .attr('transform', `translate(${width/2},${height/2})`);
+            
+            // Prepare regulation area data
+            const regulationData = Object.entries(analyticsSummary.regulationAreas)
+                .map(([area, count]) => ({ area, count }))
+                .sort((a, b) => b.count - a.count);
+            
+            // Limit to top 8 areas for readability
+            const topRegulations = regulationData.slice(0, 8);
+            
+            // Create pie layout
+            const pie = d3.pie()
+                .value(d => d.count)
+                .sort(null);
+            
+            // Create arc generator
+            const arc = d3.arc()
+                .innerRadius(0)
+                .outerRadius(radius);
+            
+            // Create outer arc for labels
+            const outerArc = d3.arc()
+                .innerRadius(radius * 1.1)
+                .outerRadius(radius * 1.1);
+            
+            // Generate arcs
+            const arcs = pie(topRegulations);
+            
+            // Color scale for regulation areas
+            const regulationColor = d3.scaleOrdinal()
+                .domain(topRegulations.map(d => d.area))
+                .range(colorScale.range());
+            
+            // Draw arcs
+            svg.selectAll('path')
+                .data(arcs)
+                .enter()
+                .append('path')
+                .attr('d', arc)
+                .attr('fill', d => regulationColor(d.data.area))
+                .attr('stroke', 'white')
+                .style('stroke-width', '2px')
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>${d.data.area}</strong><br/>
+                        Tickets: ${d.data.count}<br/>
+                        Percentage: ${((d.data.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                    
+                    d3.select(this).transition()
+                        .duration(200)
+                        .attr('transform', 'scale(1.05)');
+                })
+                .on('mouseout', function(event, d) {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                    d3.select(this).transition()
+                        .duration(200)
+                        .attr('transform', 'scale(1)');
+                });
+            
+            // Add labels
+            svg.selectAll('text')
+                .data(arcs)
+                .enter()
+                .append('text')
+                .attr('transform', d => {
+                    const pos = outerArc.centroid(d);
+                    return `translate(${pos[0]},${pos[1]})`;
+                })
+                .attr('dy', '.35em')
+                .style('text-anchor', d => {
+                    const midangle = d.startAngle + (d.endAngle - d.startAngle) / 2;
+                    return (midangle < Math.PI) ? 'start' : 'end';
+                })
+                .text(d => d.data.area)
+                .style('font-size', '12px')
+                .style('fill', '#2c5282')
+                .style('font-weight', 'bold');
+            
+            // Create legend
+            legend.innerHTML = topRegulations.map((item, i) => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${regulationColor(item.area)};"></div>
+                    <span>${item.area}: ${item.count}</span>
+                </div>
+            `).join('');
         }
         
         // Create problem type chart (horizontal bar chart)
         function createProblemTypeChart() {
-            // ... your existing function code ...
+            const container = document.getElementById('problemChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('problemLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 40, left: 150 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#problemChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Prepare problem type data
+            const problemData = Object.entries(analyticsSummary.problemTypes)
+                .map(([problem, count]) => ({ problem, count }))
+                .sort((a, b) => b.count - a.count);
+            
+            // Limit to top 10 problems for readability
+            const topProblems = problemData.slice(0, 10);
+            
+            // Y scale for problems
+            const y = d3.scaleBand()
+                .domain(topProblems.map(d => d.problem))
+                .range([0, height])
+                .padding(0.2);
+            
+            // X scale for counts
+            const x = d3.scaleLinear()
+                .domain([0, d3.max(topProblems, d => d.count)])
+                .nice()
+                .range([0, width]);
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x));
+            
+            // Add bars
+            svg.selectAll('.problem-bar')
+                .data(topProblems)
+                .enter()
+                .append('rect')
+                .attr('class', 'problem-bar')
+                .attr('x', 0)
+                .attr('y', d => y(d.problem))
+                .attr('width', d => x(d.count))
+                .attr('height', y.bandwidth())
+                .attr('fill', (d, i) => colorScale(i))
+                .attr('rx', 4)
+                .attr('ry', 4)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>${d.problem}</strong><br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add value labels on bars
+            svg.selectAll('.problem-label')
+                .data(topProblems)
+                .enter()
+                .append('text')
+                .attr('class', 'problem-label')
+                .attr('x', d => x(d.count) + 5)
+                .attr('y', d => y(d.problem) + y.bandwidth() / 2)
+                .attr('dy', '.35em')
+                .text(d => d.count)
+                .style('font-weight', 'bold')
+                .style('fill', '#2c5282');
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Add chart title inside
+            svg.append('text')
+                .attr('x', width / 2)
+                .attr('y', -10)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('font-weight', 'bold')
+                .style('fill', '#4a6fa5')
+                .text('Top 10 Most Common Problems');
+            
+            // Create legend
+            legend.innerHTML = `<div class="legend-item">
+                <span>Showing top 10 most common problems out of ${Object.keys(analyticsSummary.problemTypes).length} unique problem types</span>
+            </div>`;
         }
         
         // Create response time chart with text categories from K column
         function createResponseTimeChart() {
-            // ... your existing function code ...
+            const container = document.getElementById('responseTimeChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('responseTimeLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#responseTimeChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Prepare response time category data from analytics
+            const responseTimeData = [
+                analyticsSummary.responseTimeCategories['Less than 1 hour'],
+                analyticsSummary.responseTimeCategories['Within the day'],
+                analyticsSummary.responseTimeCategories['The next day'],
+                analyticsSummary.responseTimeCategories['More than 2 days']
+            ];
+            
+            // Category colors
+            const categoryColors = {
+                'Less than 1 hour': '#38a169', // Green
+                'Within the day': '#d69e2e',   // Yellow
+                'The next day': '#ed8936',     // Orange
+                'More than 2 days': '#e53e3e'  // Red
+            };
+            
+            // X scale for categories (using descriptions)
+            const x = d3.scaleBand()
+                .domain(responseTimeData.map(d => d.description))
+                .range([0, width])
+                .padding(0.3);
+            
+            // Y scale for counts
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(responseTimeData, d => d.count)])
+                .nice()
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x));
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add bars
+            svg.selectAll('.response-bar')
+                .data(responseTimeData)
+                .enter()
+                .append('rect')
+                .attr('class', 'response-bar')
+                .attr('x', d => x(d.description))
+                .attr('y', d => y(d.count))
+                .attr('width', x.bandwidth())
+                .attr('height', d => height - y(d.count))
+                .attr('fill', d => categoryColors[d.label])
+                .attr('rx', 4)
+                .attr('ry', 4)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>${d.label}</strong><br/>
+                        Time Range: ${d.description}<br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${calculateResponseTimePercentage(d.label)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add value labels on bars
+            svg.selectAll('.response-label')
+                .data(responseTimeData)
+                .enter()
+                .append('text')
+                .attr('class', 'response-label')
+                .attr('x', d => x(d.description) + x.bandwidth() / 2)
+                .attr('y', d => y(d.count) - 5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.count)
+                .style('font-weight', 'bold')
+                .style('fill', '#2c5282');
+            
+            // Calculate total tickets with response time
+            const totalResponseTickets = responseTimeData.reduce((sum, d) => sum + d.count, 0);
+            
+            // Calculate average numeric response time for reference line
+            const avgResponseTime = analyticsSummary.responseTimeStats.avg;
+            
+            // Add average response time line (if we have data)
+            if (totalResponseTickets > 0 && avgResponseTime > 0) {
+                svg.append('line')
+                    .attr('x1', 0)
+                    .attr('x2', width)
+                    .attr('y1', y(avgResponseTime))
+                    .attr('y2', y(avgResponseTime))
+                    .attr('stroke', '#2c5282')
+                    .attr('stroke-width', 2)
+                    .attr('stroke-dasharray', '5,5');
+                
+                // Add average label
+                svg.append('text')
+                    .attr('x', width - 5)
+                    .attr('y', y(avgResponseTime) - 5)
+                    .text(`Avg: ${avgResponseTime.toFixed(1)}h`)
+                    .style('font-size', '12px')
+                    .style('fill', '#2c5282')
+                    .style('font-weight', 'bold')
+                    .style('text-anchor', 'end');
+            }
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Response Time Categories')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Add chart title
+            svg.append('text')
+                .attr('x', width / 2)
+                .attr('y', -10)
+                .attr('text-anchor', 'middle')
+                .style('font-size', '14px')
+                .style('font-weight', 'bold')
+                .style('fill', '#4a6fa5')
+                .text('Response Time Distribution by Category');
+            
+            // Calculate percentages for legend
+            function calculateResponseTimePercentage(categoryLabel) {
+                const category = responseTimeData.find(d => d.label === categoryLabel);
+                if (!category || totalResponseTickets === 0) return 0;
+                return ((category.count / totalResponseTickets) * 100).toFixed(1);
+            }
+            
+            // Create detailed legend
+            legend.innerHTML = responseTimeData.map(category => {
+                const percentage = calculateResponseTimePercentage(category.label);
+                return `
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: ${categoryColors[category.label]};"></div>
+                        <span>${category.label} (${category.description}): ${category.count} tickets (${percentage}%)</span>
+                    </div>
+                `;
+            }).join('');
+            
+            // Add average to legend (if available)
+            if (totalResponseTickets > 0 && avgResponseTime > 0) {
+                legend.innerHTML += `
+                    <div class="legend-item">
+                        <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
+                        <span>Average Numeric Time: ${avgResponseTime.toFixed(1)} hours</span>
+                    </div>
+                `;
+            }
         }
         
         // Create performance chart
         function createPerformanceChart() {
-            // ... your existing function code ...
+            const container = document.getElementById('performanceChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('performanceLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#performanceChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Group performance by rating (rounded to nearest 0.5)
+            const performanceGroups = {};
+            closedTicketsData.forEach(ticket => {
+                if (ticket['Average Performance'] > 0) {
+                    const rating = Math.round(ticket['Average Performance'] * 2) / 2; // Round to nearest 0.5
+                    if (!performanceGroups[rating]) {
+                        performanceGroups[rating] = [];
+                    }
+                    performanceGroups[rating].push(ticket);
+                }
+            });
+            
+            // Convert to array
+            const performanceData = Object.entries(performanceGroups)
+                .map(([rating, tickets]) => ({
+                    rating: parseFloat(rating),
+                    count: tickets.length,
+                    tickets: tickets
+                }))
+                .sort((a, b) => a.rating - b.rating);
+            
+            // X scale for ratings
+            const x = d3.scaleBand()
+                .domain(performanceData.map(d => d.rating))
+                .range([0, width])
+                .padding(0.2);
+            
+            // Y scale for counts
+            const y = d3.scaleLinear()
+                .domain([0, d3.max(performanceData, d => d.count)])
+                .nice()
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => d.toFixed(1)));
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add bars
+            svg.selectAll('.performance-bar')
+                .data(performanceData)
+                .enter()
+                .append('rect')
+                .attr('class', 'performance-bar')
+                .attr('x', d => x(d.rating))
+                .attr('y', d => y(d.count))
+                .attr('width', x.bandwidth())
+                .attr('height', d => height - y(d.count))
+                .attr('fill', d => {
+                    // Color based on rating (green for high, yellow for medium, red for low)
+                    if (d.rating >= 4) return '#38a169';
+                    if (d.rating >= 3) return '#d69e2e';
+                    return '#e53e3e';
+                })
+                .attr('rx', 4)
+                .attr('ry', 4)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>Rating: ${d.rating}/5</strong><br/>
+                        Tickets: ${d.count}<br/>
+                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Add value labels on bars
+            svg.selectAll('.performance-label')
+                .data(performanceData)
+                .enter()
+                .append('text')
+                .attr('class', 'performance-label')
+                .attr('x', d => x(d.rating) + x.bandwidth() / 2)
+                .attr('y', d => y(d.count) - 5)
+                .attr('text-anchor', 'middle')
+                .text(d => d.count)
+                .style('font-weight', 'bold')
+                .style('fill', '#2c5282');
+            
+            // Add average line
+            const avgPerformance = analyticsSummary.performanceStats.avg;
+            svg.append('line')
+                .attr('x1', 0)
+                .attr('x2', width)
+                .attr('y1', y(avgPerformance))
+                .attr('y2', y(avgPerformance))
+                .attr('stroke', '#2c5282')
+                .attr('stroke-width', 2)
+                .attr('stroke-dasharray', '5,5');
+            
+            // Add average label
+            svg.append('text')
+                .attr('x', width - 5)
+                .attr('y', y(avgPerformance) - 5)
+                .text(`Avg: ${avgPerformance.toFixed(1)}`)
+                .style('font-size', '12px')
+                .style('fill', '#2c5282')
+                .style('font-weight', 'bold')
+                .style('text-anchor', 'end');
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Performance Rating (1-5 scale)')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Number of Tickets')
+                .style('fill', '#64748b');
+            
+            // Create legend
+            legend.innerHTML = `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #38a169;"></div>
+                    <span>High Performance (4.0+)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #d69e2e;"></div>
+                    <span>Medium Performance (3.0-3.9)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #e53e3e;"></div>
+                    <span>Low Performance (&lt;3.0)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
+                    <span>Average: ${avgPerformance.toFixed(1)}/5</span>
+                </div>
+            `;
         }
         
         // Create correlation chart (scatter plot)
         function createCorrelationChart() {
-            // ... your existing function code ...
+            const container = document.getElementById('correlationChart');
+            container.innerHTML = '';
+            const legend = document.getElementById('correlationLegend');
+            legend.innerHTML = '';
+            
+            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = container.clientHeight - margin.top - margin.bottom;
+            
+            const svg = d3.select('#correlationChart')
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+            
+            // Prepare correlation data
+            const correlationData = closedTicketsData
+                .filter(ticket => ticket['Response Time'] > 0 && ticket['Average Performance'] > 0)
+                .map(ticket => ({
+                    responseTime: ticket['Response Time'],
+                    performance: ticket['Average Performance'],
+                    regulationArea: ticket['Regulation Area'] || 'Unknown'
+                }));
+            
+            // X scale for response time
+            const x = d3.scaleLinear()
+                .domain([0, d3.max(correlationData, d => d.responseTime)])
+                .nice()
+                .range([0, width]);
+            
+            // Y scale for performance
+            const y = d3.scaleLinear()
+                .domain([0, 5]) // Performance is 1-5 scale
+                .nice()
+                .range([height, 0]);
+            
+            // Add X axis
+            svg.append('g')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickFormat(d => d + 'h'));
+            
+            // Add Y axis
+            svg.append('g')
+                .call(d3.axisLeft(y));
+            
+            // Add grid lines
+            svg.append('g')
+                .attr('class', 'grid')
+                .attr('transform', `translate(0,${height})`)
+                .call(d3.axisBottom(x).tickSize(-height).tickFormat(''));
+            
+            svg.append('g')
+                .attr('class', 'grid')
+                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
+            
+            // Add dots
+            svg.selectAll('.correlation-dot')
+                .data(correlationData)
+                .enter()
+                .append('circle')
+                .attr('class', 'correlation-dot')
+                .attr('cx', d => x(d.responseTime))
+                .attr('cy', d => y(d.performance))
+                .attr('r', 6)
+                .attr('fill', d => {
+                    // Color by response time category
+                    if (d.responseTime < 1) return '#38a169';        // <1 hour
+                    if (d.responseTime <= 8) return '#d69e2e';      // 1-8 hours
+                    if (d.responseTime <= 16) return '#ed8936';     // 8-16 hours
+                    return '#e53e3e';                              // >16 hours
+                })
+                .attr('opacity', 0.7)
+                .attr('stroke', 'white')
+                .attr('stroke-width', 1)
+                .on('mouseover', function(event, d) {
+                    tooltip.transition().duration(200).style('opacity', .9);
+                    tooltip.html(`
+                        <strong>Regulation Area: ${d.regulationArea}</strong><br/>
+                        Response Time: ${d.responseTime.toFixed(1)} hours<br/>
+                        Performance: ${d.performance.toFixed(1)}/5
+                    `)
+                    .style('left', (event.pageX + 10) + 'px')
+                    .style('top', (event.pageY - 28) + 'px');
+                })
+                .on('mouseout', function() {
+                    tooltip.transition().duration(500).style('opacity', 0);
+                });
+            
+            // Calculate correlation coefficient
+            const correlation = calculateCorrelation(correlationData);
+            
+            // Add correlation line if there's a correlation
+            if (Math.abs(correlation) > 0.1 && correlationData.length > 1) {
+                const regression = linearRegression(correlationData);
+                
+                svg.append('line')
+                    .attr('x1', x(0))
+                    .attr('x2', x(d3.max(correlationData, d => d.responseTime)))
+                    .attr('y1', y(regression.intercept))
+                    .attr('y2', y(regression.intercept + regression.slope * d3.max(correlationData, d => d.responseTime)))
+                    .attr('stroke', '#2c5282')
+                    .attr('stroke-width', 2)
+                    .attr('stroke-dasharray', '5,5');
+            }
+            
+            // Add X axis label
+            svg.append('text')
+                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
+                .style('text-anchor', 'middle')
+                .text('Response Time (hours)')
+                .style('fill', '#64748b');
+            
+            // Add Y axis label
+            svg.append('text')
+                .attr('transform', 'rotate(-90)')
+                .attr('y', 0 - margin.left)
+                .attr('x', 0 - (height / 2))
+                .attr('dy', '1em')
+                .style('text-anchor', 'middle')
+                .text('Performance Rating (1-5)')
+                .style('fill', '#64748b');
+            
+            // Add correlation coefficient text
+            svg.append('text')
+                .attr('x', width - 10)
+                .attr('y', 20)
+                .text(`Correlation: ${correlation.toFixed(2)}`)
+                .style('font-size', '14px')
+                .style('fill', '#2c5282')
+                .style('font-weight', 'bold')
+                .style('text-anchor', 'end');
+            
+            // Add response time category legend
+            const responseColors = [
+                { label: '<1 hour', color: '#38a169' },
+                { label: '1-8 hours', color: '#d69e2e' },
+                { label: '8-16 hours', color: '#ed8936' },
+                { label: '>16 hours', color: '#e53e3e' }
+            ];
+            
+            const colorLegend = responseColors.map(item => `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: ${item.color};"></div>
+                    <span>${item.label}</span>
+                </div>
+            `).join('');
+            
+            // Create legend
+            legend.innerHTML = `
+                <div class="legend-item">
+                    <span>Each dot represents one closed ticket</span>
+                </div>
+                ${colorLegend}
+                <div class="legend-item">
+                    <span>Correlation coefficient: ${correlation.toFixed(2)}</span>
+                </div>
+                ${Math.abs(correlation) > 0.1 && correlationData.length > 1 ? `
+                <div class="legend-item">
+                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
+                    <span>Regression line (trend)</span>
+                </div>
+                ` : ''}
+            `;
         }
         
         // Helper function to calculate correlation coefficient
         function calculateCorrelation(data) {
-            // ... your existing function code ...
+            if (data.length < 2) return 0;
+            
+            const n = data.length;
+            const sumX = data.reduce((sum, d) => sum + d.responseTime, 0);
+            const sumY = data.reduce((sum, d) => sum + d.performance, 0);
+            const sumXY = data.reduce((sum, d) => sum + d.responseTime * d.performance, 0);
+            const sumX2 = data.reduce((sum, d) => sum + d.responseTime * d.responseTime, 0);
+            const sumY2 = data.reduce((sum, d) => sum + d.performance * d.performance, 0);
+            
+            const numerator = n * sumXY - sumX * sumY;
+            const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+            
+            return denominator === 0 ? 0 : numerator / denominator;
         }
         
         // Helper function for linear regression
         function linearRegression(data) {
-            // ... your existing function code ...
+            const n = data.length;
+            const sumX = data.reduce((sum, d) => sum + d.responseTime, 0);
+            const sumY = data.reduce((sum, d) => sum + d.performance, 0);
+            const sumXY = data.reduce((sum, d) => sum + d.responseTime * d.performance, 0);
+            const sumX2 = data.reduce((sum, d) => sum + d.responseTime * d.responseTime, 0);
+            
+            const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+            const intercept = (sumY - slope * sumX) / n;
+            
+            return { slope, intercept };
         }
         
         // Initialize the dashboard
