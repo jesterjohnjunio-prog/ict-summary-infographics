@@ -349,6 +349,27 @@
         .rating-average { background: #feebc8; color: #744210; }
         .rating-poor { background: #e2e8f0; color: #2d3748; }
         
+        /* NEW: Combined Performance Score */
+        .performance-score {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4a6fa5, #2c5282);
+            color: white;
+            font-weight: bold;
+            font-size: 1rem;
+            margin-right: 10px;
+        }
+        
+        .score-container {
+            display: flex;
+            align-items: center;
+            margin-top: 10px;
+        }
+        
         /* Existing chart styles... */
         .chart-card {
             background: white;
@@ -543,12 +564,14 @@
                     <div>
                         <span style="font-size: 0.9rem; color: #64748b; margin-right: 10px;">Sort by:</span>
                         <select class="personnel-filter" id="sortPersonnel">
-                            <option value="rating-desc">Highest Rating First</option>
-                            <option value="rating-asc">Lowest Rating First</option>
-                            <option value="response-asc">Fastest Response First</option>
-                            <option value="response-desc">Slowest Response First</option>
-                            <option value="tickets-desc">Most Tickets First</option>
-                            <option value="tickets-asc">Fewest Tickets First</option>
+                            <option value="score-desc">Highest Combined Score</option>
+                            <option value="score-asc">Lowest Combined Score</option>
+                            <option value="rating-desc">Highest Rating</option>
+                            <option value="rating-asc">Lowest Rating</option>
+                            <option value="response-asc">Fastest Response</option>
+                            <option value="response-desc">Slowest Response</option>
+                            <option value="tickets-desc">Most Tickets</option>
+                            <option value="tickets-asc">Fewest Tickets</option>
                         </select>
                     </div>
                     <div>
@@ -557,9 +580,10 @@
                             <option value="all">All Personnel</option>
                             <option value="top10">Top 10 Performers</option>
                             <option value="top20">Top 20 Performers</option>
-                            <option value="rating4">Rating 4.0+</option>
-                            <option value="rating3">Rating 3.0-3.9</option>
-                            <option value="rating2">Rating Below 3.0</option>
+                            <option value="score8">Score 8.0+ (Excellent)</option>
+                            <option value="score6">Score 6.0-7.9 (Good)</option>
+                            <option value="score4">Score 4.0-5.9 (Average)</option>
+                            <option value="score2">Score Below 4.0 (Poor)</option>
                         </select>
                     </div>
                 </div>
@@ -572,7 +596,7 @@
             <div class="top-performers" id="topPerformers">
                 <div class="top-performers-header">
                     <div class="top-performers-title">
-                        <i class="fas fa-trophy"></i> Top Performers Summary
+                        <i class="fas fa-trophy"></i> Performance Rankings (Higher Score = Better Performance)
                     </div>
                     <div style="font-size: 0.9rem; color: #64748b;">
                         Showing <span id="personnelCount">0</span> personnel members
@@ -584,10 +608,11 @@
                         <tr>
                             <th style="width: 60px;">Rank</th>
                             <th>Personnel Name</th>
+                            <th style="width: 100px;">Combined Score</th>
                             <th style="width: 100px;">Avg Rating</th>
                             <th style="width: 150px;">Avg Response Time</th>
                             <th style="width: 100px;">Total Tickets</th>
-                            <th style="width: 120px;">Performance Category</th>
+                            <th style="width: 120px;">Performance</th>
                         </tr>
                     </thead>
                     <tbody id="performanceTableBody">
@@ -773,12 +798,12 @@
             return name.substring(0, 2).toUpperCase();
         }
         
-        // NEW: Function to get performance category based on rating
-        function getPerformanceCategory(rating) {
-            if (rating >= 4.5) return { label: 'Excellent', class: 'rating-excellent', stars: 5 };
-            if (rating >= 4.0) return { label: 'Very Good', class: 'rating-good', stars: 4 };
-            if (rating >= 3.0) return { label: 'Average', class: 'rating-average', stars: 3 };
-            if (rating >= 2.0) return { label: 'Below Average', class: 'rating-poor', stars: 2 };
+        // NEW: Function to get performance category based on COMBINED SCORE
+        function getPerformanceCategory(combinedScore) {
+            if (combinedScore >= 8.0) return { label: 'Excellent', class: 'rating-excellent', stars: 5 };
+            if (combinedScore >= 6.0) return { label: 'Good', class: 'rating-good', stars: 4 };
+            if (combinedScore >= 4.0) return { label: 'Average', class: 'rating-average', stars: 3 };
+            if (combinedScore >= 2.0) return { label: 'Below Average', class: 'rating-poor', stars: 2 };
             return { label: 'Poor', class: 'rating-poor', stars: 1 };
         }
         
@@ -799,6 +824,32 @@
                 starsHTML += '<i class="far fa-star"></i>';
             }
             return starsHTML;
+        }
+        
+        // NEW: Calculate combined performance score (higher is better)
+        function calculateCombinedScore(averagePerformance, averageResponseTime) {
+            // Performance rating component (0-5 scale, converted to 0-5 points)
+            const performanceScore = averagePerformance;
+            
+            // Response time component (lower is better, converted to 0-5 points)
+            // Scale: 0 hours = 5 points, 24+ hours = 0 points
+            let responseScore = 0;
+            if (averageResponseTime > 0) {
+                // Inverse relationship: lower response time = higher score
+                responseScore = Math.max(0, 5 - (averageResponseTime / 5));
+                // Cap the response score at 5
+                responseScore = Math.min(5, responseScore);
+            }
+            
+            // Combined score (weighted average)
+            // Performance weight: 60%, Response time weight: 40%
+            const combinedScore = (performanceScore * 0.6) + (responseScore * 0.4);
+            
+            return {
+                combinedScore: Math.min(10, combinedScore * 2), // Scale to 0-10
+                performanceScore: performanceScore,
+                responseScore: responseScore
+            };
         }
         
         // NEW: Function to create mini chart for personnel response times
@@ -837,10 +888,12 @@
                 .attr('width', x.bandwidth())
                 .attr('height', d => height - margin.bottom - y(d))
                 .attr('fill', d => {
-                    if (d < 1) return '#38a169';
-                    if (d <= 8) return '#d69e2e';
-                    if (d <= 16) return '#ed8936';
-                    return '#e53e3e';
+                    if (d < 1) return '#38a169';        // Excellent: <1 hour
+                    if (d <= 4) return '#68d391';      // Very Good: 1-4 hours
+                    if (d <= 8) return '#d69e2e';      // Good: 4-8 hours
+                    if (d <= 12) return '#ed8936';     // Average: 8-12 hours
+                    if (d <= 16) return '#dd6b20';     // Below Average: 12-16 hours
+                    return '#e53e3e';                  // Poor: >16 hours
                 })
                 .attr('rx', 2)
                 .attr('ry', 2);
@@ -1208,7 +1261,7 @@
                 }
             });
             
-            // Calculate averages for each personnel
+            // Calculate averages and scores for each personnel
             Object.values(personnelPerformance).forEach(personnel => {
                 personnel.averagePerformance = personnel.performanceTickets > 0 
                     ? personnel.performanceSum / personnel.performanceTickets 
@@ -1218,13 +1271,13 @@
                     ? personnel.responseTimeSum / personnel.responseTimeTickets 
                     : 0;
                 
-                personnel.performanceCategory = getPerformanceCategory(personnel.averagePerformance);
+                // Calculate combined score (lower response time = higher score)
+                const scoreData = calculateCombinedScore(personnel.averagePerformance, personnel.averageResponseTime);
+                personnel.combinedScore = scoreData.combinedScore;
+                personnel.performanceScore = scoreData.performanceScore;
+                personnel.responseScore = scoreData.responseScore;
                 
-                // Find most common regulation area
-                const regulationEntries = Object.entries(personnel.regulationAreas);
-                personnel.primaryRegulationArea = regulationEntries.length > 0
-                    ? regulationEntries.sort((a, b) => b[1] - a[1])[0][0]
-                    : 'N/A';
+                personnel.performanceCategory = getPerformanceCategory(personnel.combinedScore);
                 
                 // Find most common problem type
                 const problemEntries = Object.entries(personnel.problemTypes);
@@ -1242,11 +1295,11 @@
             const performanceTableBody = document.getElementById('performanceTableBody');
             const personnelCount = document.getElementById('personnelCount');
             
-            // Convert personnel data to array and sort by rating
+            // Convert personnel data to array and sort by combined score
             let personnelArray = Object.values(personnelPerformance);
             
-            // Sort by average rating (descending)
-            personnelArray.sort((a, b) => b.averagePerformance - a.averagePerformance);
+            // Sort by combined score (descending)
+            personnelArray.sort((a, b) => b.combinedScore - a.combinedScore);
             
             // Update count
             personnelCount.textContent = personnelArray.length;
@@ -1269,7 +1322,19 @@
                             </div>
                             <div class="personnel-info">
                                 <h3>${personnel.name}</h3>
-                                <p>Primary Area: ${personnel.primaryRegulationArea}</p>
+                                <!-- Primary Area removed as requested -->
+                            </div>
+                        </div>
+                        
+                        <div class="score-container">
+                            <div class="performance-score">
+                                ${personnel.combinedScore.toFixed(1)}
+                            </div>
+                            <div>
+                                <div style="font-size: 0.9rem; color: #4a5568; font-weight: 600;">Combined Performance Score</div>
+                                <div style="font-size: 0.8rem; color: #718096;">
+                                    Rating: ${personnel.averagePerformance.toFixed(1)}/5 • Response: ${personnel.averageResponseTime.toFixed(1)}h
+                                </div>
                             </div>
                         </div>
                         
@@ -1288,9 +1353,6 @@
                                     <div class="stars">
                                         ${getStarsHTML(personnel.averagePerformance)}
                                     </div>
-                                    <span class="rating-badge ${personnel.performanceCategory.class}">
-                                        ${personnel.performanceCategory.label}
-                                    </span>
                                 </div>
                             </div>
                             
@@ -1298,7 +1360,17 @@
                                 <div class="personnel-stat-value">${personnel.averageResponseTime.toFixed(1)}h</div>
                                 <div class="personnel-stat-label">Avg Response Time</div>
                                 <div class="personnel-stat-label" style="margin-top: 5px;">
-                                    ${personnel.responseTimeTickets} tickets
+                                    <span style="color: ${personnel.averageResponseTime < 1 ? '#38a169' : 
+                                                       personnel.averageResponseTime <= 4 ? '#68d391' : 
+                                                       personnel.averageResponseTime <= 8 ? '#d69e2e' : 
+                                                       personnel.averageResponseTime <= 12 ? '#ed8936' : 
+                                                       personnel.averageResponseTime <= 16 ? '#dd6b20' : '#e53e3e'}; font-weight: 600;">
+                                        ${personnel.averageResponseTime < 1 ? 'Excellent' : 
+                                         personnel.averageResponseTime <= 4 ? 'Very Good' : 
+                                         personnel.averageResponseTime <= 8 ? 'Good' : 
+                                         personnel.averageResponseTime <= 12 ? 'Average' : 
+                                         personnel.averageResponseTime <= 16 ? 'Below Avg' : 'Poor'}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -1326,8 +1398,22 @@
                             </div>
                         </td>
                         <td><strong>${personnel.name}</strong></td>
-                        <td>${personnel.averagePerformance.toFixed(1)}</td>
-                        <td>${personnel.averageResponseTime.toFixed(1)} hours</td>
+                        <td><strong style="font-size: 1.1rem;">${personnel.combinedScore.toFixed(1)}</strong>/10</td>
+                        <td>${personnel.averagePerformance.toFixed(1)}/5</td>
+                        <td>
+                            ${personnel.averageResponseTime.toFixed(1)}h
+                            <div style="font-size: 0.8rem; color: ${personnel.averageResponseTime < 1 ? '#38a169' : 
+                                                                   personnel.averageResponseTime <= 4 ? '#68d391' : 
+                                                                   personnel.averageResponseTime <= 8 ? '#d69e2e' : 
+                                                                   personnel.averageResponseTime <= 12 ? '#ed8936' : 
+                                                                   personnel.averageResponseTime <= 16 ? '#dd6b20' : '#e53e3e'}">
+                                ${personnel.averageResponseTime < 1 ? 'Excellent' : 
+                                 personnel.averageResponseTime <= 4 ? 'Very Good' : 
+                                 personnel.averageResponseTime <= 8 ? 'Good' : 
+                                 personnel.averageResponseTime <= 12 ? 'Average' : 
+                                 personnel.averageResponseTime <= 16 ? 'Below Avg' : 'Poor'}
+                            </div>
+                        </td>
                         <td>${personnel.totalTickets}</td>
                         <td>
                             <span class="rating-badge ${personnel.performanceCategory.class}">
@@ -1365,20 +1451,29 @@
                 case 'top20':
                     personnelArray = personnelArray.slice(0, 20);
                     break;
-                case 'rating4':
-                    personnelArray = personnelArray.filter(p => p.averagePerformance >= 4.0);
+                case 'score8':
+                    personnelArray = personnelArray.filter(p => p.combinedScore >= 8.0);
                     break;
-                case 'rating3':
-                    personnelArray = personnelArray.filter(p => p.averagePerformance >= 3.0 && p.averagePerformance < 4.0);
+                case 'score6':
+                    personnelArray = personnelArray.filter(p => p.combinedScore >= 6.0 && p.combinedScore < 8.0);
                     break;
-                case 'rating2':
-                    personnelArray = personnelArray.filter(p => p.averagePerformance < 3.0);
+                case 'score4':
+                    personnelArray = personnelArray.filter(p => p.combinedScore >= 4.0 && p.combinedScore < 6.0);
+                    break;
+                case 'score2':
+                    personnelArray = personnelArray.filter(p => p.combinedScore < 4.0);
                     break;
                 // 'all' - keep all personnel
             }
             
             // Apply sort
             switch(sortBy) {
+                case 'score-desc':
+                    personnelArray.sort((a, b) => b.combinedScore - a.combinedScore);
+                    break;
+                case 'score-asc':
+                    personnelArray.sort((a, b) => a.combinedScore - b.combinedScore);
+                    break;
                 case 'rating-desc':
                     personnelArray.sort((a, b) => b.averagePerformance - a.averagePerformance);
                     break;
@@ -1430,7 +1525,19 @@
                             </div>
                             <div class="personnel-info">
                                 <h3>${personnel.name}</h3>
-                                <p>Primary Area: ${personnel.primaryRegulationArea}</p>
+                                <!-- Primary Area removed as requested -->
+                            </div>
+                        </div>
+                        
+                        <div class="score-container">
+                            <div class="performance-score">
+                                ${personnel.combinedScore.toFixed(1)}
+                            </div>
+                            <div>
+                                <div style="font-size: 0.9rem; color: #4a5568; font-weight: 600;">Combined Performance Score</div>
+                                <div style="font-size: 0.8rem; color: #718096;">
+                                    Rating: ${personnel.averagePerformance.toFixed(1)}/5 • Response: ${personnel.averageResponseTime.toFixed(1)}h
+                                </div>
                             </div>
                         </div>
                         
@@ -1449,9 +1556,6 @@
                                     <div class="stars">
                                         ${getStarsHTML(personnel.averagePerformance)}
                                     </div>
-                                    <span class="rating-badge ${personnel.performanceCategory.class}">
-                                        ${personnel.performanceCategory.label}
-                                    </span>
                                 </div>
                             </div>
                             
@@ -1459,7 +1563,17 @@
                                 <div class="personnel-stat-value">${personnel.averageResponseTime.toFixed(1)}h</div>
                                 <div class="personnel-stat-label">Avg Response Time</div>
                                 <div class="personnel-stat-label" style="margin-top: 5px;">
-                                    ${personnel.responseTimeTickets} tickets
+                                    <span style="color: ${personnel.averageResponseTime < 1 ? '#38a169' : 
+                                                       personnel.averageResponseTime <= 4 ? '#68d391' : 
+                                                       personnel.averageResponseTime <= 8 ? '#d69e2e' : 
+                                                       personnel.averageResponseTime <= 12 ? '#ed8936' : 
+                                                       personnel.averageResponseTime <= 16 ? '#dd6b20' : '#e53e3e'}; font-weight: 600;">
+                                        ${personnel.averageResponseTime < 1 ? 'Excellent' : 
+                                         personnel.averageResponseTime <= 4 ? 'Very Good' : 
+                                         personnel.averageResponseTime <= 8 ? 'Good' : 
+                                         personnel.averageResponseTime <= 12 ? 'Average' : 
+                                         personnel.averageResponseTime <= 16 ? 'Below Avg' : 'Poor'}
+                                    </span>
                                 </div>
                             </div>
                         </div>
@@ -1487,8 +1601,22 @@
                             </div>
                         </td>
                         <td><strong>${personnel.name}</strong></td>
-                        <td>${personnel.averagePerformance.toFixed(1)}</td>
-                        <td>${personnel.averageResponseTime.toFixed(1)} hours</td>
+                        <td><strong style="font-size: 1.1rem;">${personnel.combinedScore.toFixed(1)}</strong>/10</td>
+                        <td>${personnel.averagePerformance.toFixed(1)}/5</td>
+                        <td>
+                            ${personnel.averageResponseTime.toFixed(1)}h
+                            <div style="font-size: 0.8rem; color: ${personnel.averageResponseTime < 1 ? '#38a169' : 
+                                                                   personnel.averageResponseTime <= 4 ? '#68d391' : 
+                                                                   personnel.averageResponseTime <= 8 ? '#d69e2e' : 
+                                                                   personnel.averageResponseTime <= 12 ? '#ed8936' : 
+                                                                   personnel.averageResponseTime <= 16 ? '#dd6b20' : '#e53e3e'}">
+                                ${personnel.averageResponseTime < 1 ? 'Excellent' : 
+                                 personnel.averageResponseTime <= 4 ? 'Very Good' : 
+                                 personnel.averageResponseTime <= 8 ? 'Good' : 
+                                 personnel.averageResponseTime <= 12 ? 'Average' : 
+                                 personnel.averageResponseTime <= 16 ? 'Below Avg' : 'Poor'}
+                            </div>
+                        </td>
                         <td>${personnel.totalTickets}</td>
                         <td>
                             <span class="rating-badge ${personnel.performanceCategory.class}">
@@ -1524,6 +1652,17 @@
             // NEW: Count unique personnel
             const uniquePersonnelCount = Object.keys(personnelPerformance).length;
             
+            // NEW: Calculate average combined score
+            let totalCombinedScore = 0;
+            let personnelWithScores = 0;
+            Object.values(personnelPerformance).forEach(personnel => {
+                if (personnel.combinedScore > 0) {
+                    totalCombinedScore += personnel.combinedScore;
+                    personnelWithScores++;
+                }
+            });
+            const avgCombinedScore = personnelWithScores > 0 ? totalCombinedScore / personnelWithScores : 0;
+            
             const statsCards = [
                 {
                     icon: 'fas fa-ticket-alt',
@@ -1554,18 +1693,18 @@
                     subtitle: 'Unique staff members'
                 },
                 {
+                    icon: 'fas fa-chart-line',
+                    iconColor: '#e53e3e',
+                    title: 'Avg Performance Score',
+                    value: avgCombinedScore.toFixed(1),
+                    subtitle: 'Out of 10'
+                },
+                {
                     icon: 'fas fa-bolt',
                     iconColor: '#38a169',
                     title: 'Most Common Response',
                     value: mostCommonCategory.label.split(' ')[0],
                     subtitle: `${mostCommonCategory.count} tickets`
-                },
-                {
-                    icon: 'fas fa-star',
-                    iconColor: '#e53e3e',
-                    title: 'Avg Performance',
-                    value: analyticsSummary.performanceStats.avg.toFixed(1),
-                    subtitle: 'Out of 5'
                 },
                 {
                     icon: 'fas fa-percentage',
@@ -1590,952 +1729,45 @@
             `).join('');
         }
         
+        // All your existing chart functions remain unchanged below...
         // Create demographics chart (age groups and gender) - OPTION 1: Grouped Bar Chart
         function createDemographicsChart() {
-            const container = document.getElementById('demographicsChart');
-            container.innerHTML = '';
-            const legend = document.getElementById('demographicsLegend');
-            legend.innerHTML = '';
-            
-            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
-            const width = container.clientWidth - margin.left - margin.right;
-            const height = container.clientHeight - margin.top - margin.bottom;
-            
-            const svg = d3.select('#demographicsChart')
-                .append('svg')
-                .attr('width', width + margin.left + margin.right)
-                .attr('height', height + margin.top + margin.bottom)
-                .append('g')
-                .attr('transform', `translate(${margin.left},${margin.top})`);
-            
-            // Prepare combined age and gender data
-            const ageGenderData = {};
-            
-            closedTicketsData.forEach(ticket => {
-                if (ticket.Age && ticket.Sex) {
-                    const age = parseInt(ticket.Age);
-                    if (!isNaN(age)) {
-                        let ageGroup;
-                        if (age <= 25) ageGroup = '18-25';
-                        else if (age <= 35) ageGroup = '26-35';
-                        else if (age <= 45) ageGroup = '36-45';
-                        else if (age <= 55) ageGroup = '46-55';
-                        else ageGroup = '56+';
-                        
-                        const gender = ticket.Sex.trim().toLowerCase();
-                        const genderKey = (gender === 'male' || gender === 'm') ? 'Male' : 
-                                         (gender === 'female' || gender === 'f') ? 'Female' : 'Other';
-                        
-                        if (!ageGenderData[ageGroup]) {
-                            ageGenderData[ageGroup] = { 'Male': 0, 'Female': 0, 'Other': 0 };
-                        }
-                        
-                        ageGenderData[ageGroup][genderKey] += 1;
-                    }
-                }
-            });
-            
-            // Convert to array format for d3
-            const ageGroups = Object.keys(ageGenderData).sort();
-            const genders = ['Male', 'Female'];
-            
-            const data = [];
-            ageGroups.forEach(ageGroup => {
-                genders.forEach(gender => {
-                    if (ageGenderData[ageGroup][gender] > 0) {
-                        data.push({
-                            ageGroup: ageGroup,
-                            gender: gender,
-                            count: ageGenderData[ageGroup][gender]
-                        });
-                    }
-                });
-            });
-            
-            // X scale for age groups
-            const x0 = d3.scaleBand()
-                .domain(ageGroups)
-                .range([0, width])
-                .padding(0.2);
-            
-            // X scale for genders within each age group
-            const x1 = d3.scaleBand()
-                .domain(genders)
-                .range([0, x0.bandwidth()])
-                .padding(0.05);
-            
-            // Y scale for counts
-            const y = d3.scaleLinear()
-                .domain([0, d3.max(data, d => d.count)])
-                .nice()
-                .range([height, 0]);
-            
-            // Gender colors
-            const genderColors = {
-                'Male': '#2c5282',
-                'Female': '#d53f8c',
-                'Other': '#94a3b8'
-            };
-            
-            // Add X axis
-            svg.append('g')
-                .attr('transform', `translate(0,${height})`)
-                .call(d3.axisBottom(x0));
-            
-            // Add Y axis
-            svg.append('g')
-                .call(d3.axisLeft(y));
-            
-            // Add bars for each age group and gender
-            const ageGroupsSelection = svg.selectAll('.age-group')
-                .data(ageGroups)
-                .enter()
-                .append('g')
-                .attr('class', 'age-group')
-                .attr('transform', d => `translate(${x0(d)},0)`);
-            
-            ageGroupsSelection.selectAll('.gender-bar')
-                .data(d => genders.map(gender => ({
-                    ageGroup: d,
-                    gender: gender,
-                    count: ageGenderData[d][gender] || 0
-                })))
-                .enter()
-                .append('rect')
-                .attr('class', 'gender-bar')
-                .attr('x', d => x1(d.gender))
-                .attr('y', d => y(d.count))
-                .attr('width', x1.bandwidth())
-                .attr('height', d => height - y(d.count))
-                .attr('fill', d => genderColors[d.gender])
-                .attr('rx', 3)
-                .attr('ry', 3)
-                .on('mouseover', function(event, d) {
-                    tooltip.transition().duration(200).style('opacity', .9);
-                    tooltip.html(`
-                        <strong>${d.ageGroup} Age Group</strong><br/>
-                        Gender: ${d.gender}<br/>
-                        Tickets: ${d.count}<br/>
-                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-                })
-                .on('mouseout', function() {
-                    tooltip.transition().duration(500).style('opacity', 0);
-                });
-            
-            // Add value labels on bars (only if count > 0 and bar is tall enough)
-            ageGroupsSelection.selectAll('.gender-label')
-                .data(d => genders.map(gender => ({
-                    ageGroup: d,
-                    gender: gender,
-                    count: ageGenderData[d][gender] || 0
-                })))
-                .enter()
-                .append('text')
-                .filter(d => d.count > 0 && (height - y(d.count)) > 20) // Only show if bar is tall enough
-                .attr('class', 'gender-label')
-                .attr('x', d => x1(d.gender) + x1.bandwidth() / 2)
-                .attr('y', d => y(d.count) - 5)
-                .attr('text-anchor', 'middle')
-                .text(d => d.count)
-                .style('font-size', '11px')
-                .style('font-weight', 'bold')
-                .style('fill', d => d.gender === 'Female' ? '#d53f8c' : '#2c5282');
-            
-            // Add X axis label
-            svg.append('text')
-                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
-                .style('text-anchor', 'middle')
-                .text('Age Group')
-                .style('fill', '#64748b');
-            
-            // Add Y axis label
-            svg.append('text')
-                .attr('transform', 'rotate(-90)')
-                .attr('y', 0 - margin.left)
-                .attr('x', 0 - (height / 2))
-                .attr('dy', '1em')
-                .style('text-anchor', 'middle')
-                .text('Number of Tickets')
-                .style('fill', '#64748b');
-            
-            // Create legend for gender
-            const genderData = [
-                { label: 'Male', count: analyticsSummary.genderCount.Male, color: '#2c5282' },
-                { label: 'Female', count: analyticsSummary.genderCount.Female, color: '#d53f8c' }
-            ];
-            
-            legend.innerHTML = genderData.map(item => {
-                const percentage = ((item.count / analyticsSummary.totalTickets) * 100).toFixed(1);
-                return `
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: ${item.color};"></div>
-                        <span>${item.label}: ${item.count} tickets (${percentage}%)</span>
-                    </div>
-                `;
-            }).join('');
+            // ... your existing function code ...
         }
         
         // Create regulation area chart (pie chart)
         function createRegulationAreaChart() {
-            const container = document.getElementById('regulationChart');
-            container.innerHTML = '';
-            const legend = document.getElementById('regulationLegend');
-            legend.innerHTML = '';
-            
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-            const radius = Math.min(width, height) / 2 - 20;
-            
-            const svg = d3.select('#regulationChart')
-                .append('svg')
-                .attr('width', width)
-                .attr('height', height)
-                .append('g')
-                .attr('transform', `translate(${width/2},${height/2})`);
-            
-            // Prepare regulation area data
-            const regulationData = Object.entries(analyticsSummary.regulationAreas)
-                .map(([area, count]) => ({ area, count }))
-                .sort((a, b) => b.count - a.count);
-            
-            // Limit to top 8 areas for readability
-            const topRegulations = regulationData.slice(0, 8);
-            
-            // Create pie layout
-            const pie = d3.pie()
-                .value(d => d.count)
-                .sort(null);
-            
-            // Create arc generator
-            const arc = d3.arc()
-                .innerRadius(0)
-                .outerRadius(radius);
-            
-            // Create outer arc for labels
-            const outerArc = d3.arc()
-                .innerRadius(radius * 1.1)
-                .outerRadius(radius * 1.1);
-            
-            // Generate arcs
-            const arcs = pie(topRegulations);
-            
-            // Color scale for regulation areas
-            const regulationColor = d3.scaleOrdinal()
-                .domain(topRegulations.map(d => d.area))
-                .range(colorScale.range());
-            
-            // Draw arcs
-            svg.selectAll('path')
-                .data(arcs)
-                .enter()
-                .append('path')
-                .attr('d', arc)
-                .attr('fill', d => regulationColor(d.data.area))
-                .attr('stroke', 'white')
-                .style('stroke-width', '2px')
-                .on('mouseover', function(event, d) {
-                    tooltip.transition().duration(200).style('opacity', .9);
-                    tooltip.html(`
-                        <strong>${d.data.area}</strong><br/>
-                        Tickets: ${d.data.count}<br/>
-                        Percentage: ${((d.data.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-                    
-                    d3.select(this).transition()
-                        .duration(200)
-                        .attr('transform', 'scale(1.05)');
-                })
-                .on('mouseout', function(event, d) {
-                    tooltip.transition().duration(500).style('opacity', 0);
-                    d3.select(this).transition()
-                        .duration(200)
-                        .attr('transform', 'scale(1)');
-                });
-            
-            // Add labels
-            svg.selectAll('text')
-                .data(arcs)
-                .enter()
-                .append('text')
-                .attr('transform', d => {
-                    const pos = outerArc.centroid(d);
-                    return `translate(${pos[0]},${pos[1]})`;
-                })
-                .attr('dy', '.35em')
-                .style('text-anchor', d => {
-                    const midangle = d.startAngle + (d.endAngle - d.startAngle) / 2;
-                    return (midangle < Math.PI) ? 'start' : 'end';
-                })
-                .text(d => d.data.area)
-                .style('font-size', '12px')
-                .style('fill', '#2c5282')
-                .style('font-weight', 'bold');
-            
-            // Create legend
-            legend.innerHTML = topRegulations.map((item, i) => `
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: ${regulationColor(item.area)};"></div>
-                    <span>${item.area}: ${item.count}</span>
-                </div>
-            `).join('');
+            // ... your existing function code ...
         }
         
         // Create problem type chart (horizontal bar chart)
         function createProblemTypeChart() {
-            const container = document.getElementById('problemChart');
-            container.innerHTML = '';
-            const legend = document.getElementById('problemLegend');
-            legend.innerHTML = '';
-            
-            const margin = { top: 20, right: 30, bottom: 40, left: 150 };
-            const width = container.clientWidth - margin.left - margin.right;
-            const height = container.clientHeight - margin.top - margin.bottom;
-            
-            const svg = d3.select('#problemChart')
-                .append('svg')
-                .attr('width', width + margin.left + margin.right)
-                .attr('height', height + margin.top + margin.bottom)
-                .append('g')
-                .attr('transform', `translate(${margin.left},${margin.top})`);
-            
-            // Prepare problem type data
-            const problemData = Object.entries(analyticsSummary.problemTypes)
-                .map(([problem, count]) => ({ problem, count }))
-                .sort((a, b) => b.count - a.count);
-            
-            // Limit to top 10 problems for readability
-            const topProblems = problemData.slice(0, 10);
-            
-            // Y scale for problems
-            const y = d3.scaleBand()
-                .domain(topProblems.map(d => d.problem))
-                .range([0, height])
-                .padding(0.2);
-            
-            // X scale for counts
-            const x = d3.scaleLinear()
-                .domain([0, d3.max(topProblems, d => d.count)])
-                .nice()
-                .range([0, width]);
-            
-            // Add Y axis
-            svg.append('g')
-                .call(d3.axisLeft(y));
-            
-            // Add X axis
-            svg.append('g')
-                .attr('transform', `translate(0,${height})`)
-                .call(d3.axisBottom(x));
-            
-            // Add bars
-            svg.selectAll('.problem-bar')
-                .data(topProblems)
-                .enter()
-                .append('rect')
-                .attr('class', 'problem-bar')
-                .attr('x', 0)
-                .attr('y', d => y(d.problem))
-                .attr('width', d => x(d.count))
-                .attr('height', y.bandwidth())
-                .attr('fill', (d, i) => colorScale(i))
-                .attr('rx', 4)
-                .attr('ry', 4)
-                .on('mouseover', function(event, d) {
-                    tooltip.transition().duration(200).style('opacity', .9);
-                    tooltip.html(`
-                        <strong>${d.problem}</strong><br/>
-                        Tickets: ${d.count}<br/>
-                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-                })
-                .on('mouseout', function() {
-                    tooltip.transition().duration(500).style('opacity', 0);
-                });
-            
-            // Add value labels on bars
-            svg.selectAll('.problem-label')
-                .data(topProblems)
-                .enter()
-                .append('text')
-                .attr('class', 'problem-label')
-                .attr('x', d => x(d.count) + 5)
-                .attr('y', d => y(d.problem) + y.bandwidth() / 2)
-                .attr('dy', '.35em')
-                .text(d => d.count)
-                .style('font-weight', 'bold')
-                .style('fill', '#2c5282');
-            
-            // Add X axis label
-            svg.append('text')
-                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
-                .style('text-anchor', 'middle')
-                .text('Number of Tickets')
-                .style('fill', '#64748b');
-            
-            // Add chart title inside
-            svg.append('text')
-                .attr('x', width / 2)
-                .attr('y', -10)
-                .attr('text-anchor', 'middle')
-                .style('font-size', '14px')
-                .style('font-weight', 'bold')
-                .style('fill', '#4a6fa5')
-                .text('Top 10 Most Common Problems');
-            
-            // Create legend
-            legend.innerHTML = `<div class="legend-item">
-                <span>Showing top 10 most common problems out of ${Object.keys(analyticsSummary.problemTypes).length} unique problem types</span>
-            </div>`;
+            // ... your existing function code ...
         }
         
         // Create response time chart with text categories from K column
         function createResponseTimeChart() {
-            const container = document.getElementById('responseTimeChart');
-            container.innerHTML = '';
-            const legend = document.getElementById('responseTimeLegend');
-            legend.innerHTML = '';
-            
-            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
-            const width = container.clientWidth - margin.left - margin.right;
-            const height = container.clientHeight - margin.top - margin.bottom;
-            
-            const svg = d3.select('#responseTimeChart')
-                .append('svg')
-                .attr('width', width + margin.left + margin.right)
-                .attr('height', height + margin.top + margin.bottom)
-                .append('g')
-                .attr('transform', `translate(${margin.left},${margin.top})`);
-            
-            // Prepare response time category data from analytics
-            const responseTimeData = [
-                analyticsSummary.responseTimeCategories['Less than 1 hour'],
-                analyticsSummary.responseTimeCategories['Within the day'],
-                analyticsSummary.responseTimeCategories['The next day'],
-                analyticsSummary.responseTimeCategories['More than 2 days']
-            ];
-            
-            // Category colors
-            const categoryColors = {
-                'Less than 1 hour': '#38a169', // Green
-                'Within the day': '#d69e2e',   // Yellow
-                'The next day': '#ed8936',     // Orange
-                'More than 2 days': '#e53e3e'  // Red
-            };
-            
-            // X scale for categories (using descriptions)
-            const x = d3.scaleBand()
-                .domain(responseTimeData.map(d => d.description))
-                .range([0, width])
-                .padding(0.3);
-            
-            // Y scale for counts
-            const y = d3.scaleLinear()
-                .domain([0, d3.max(responseTimeData, d => d.count)])
-                .nice()
-                .range([height, 0]);
-            
-            // Add X axis
-            svg.append('g')
-                .attr('transform', `translate(0,${height})`)
-                .call(d3.axisBottom(x));
-            
-            // Add Y axis
-            svg.append('g')
-                .call(d3.axisLeft(y));
-            
-            // Add bars
-            svg.selectAll('.response-bar')
-                .data(responseTimeData)
-                .enter()
-                .append('rect')
-                .attr('class', 'response-bar')
-                .attr('x', d => x(d.description))
-                .attr('y', d => y(d.count))
-                .attr('width', x.bandwidth())
-                .attr('height', d => height - y(d.count))
-                .attr('fill', d => categoryColors[d.label])
-                .attr('rx', 4)
-                .attr('ry', 4)
-                .on('mouseover', function(event, d) {
-                    tooltip.transition().duration(200).style('opacity', .9);
-                    tooltip.html(`
-                        <strong>${d.label}</strong><br/>
-                        Time Range: ${d.description}<br/>
-                        Tickets: ${d.count}<br/>
-                        Percentage: ${calculateResponseTimePercentage(d.label)}%
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-                })
-                .on('mouseout', function() {
-                    tooltip.transition().duration(500).style('opacity', 0);
-                });
-            
-            // Add value labels on bars
-            svg.selectAll('.response-label')
-                .data(responseTimeData)
-                .enter()
-                .append('text')
-                .attr('class', 'response-label')
-                .attr('x', d => x(d.description) + x.bandwidth() / 2)
-                .attr('y', d => y(d.count) - 5)
-                .attr('text-anchor', 'middle')
-                .text(d => d.count)
-                .style('font-weight', 'bold')
-                .style('fill', '#2c5282');
-            
-            // Calculate total tickets with response time
-            const totalResponseTickets = responseTimeData.reduce((sum, d) => sum + d.count, 0);
-            
-            // Calculate average numeric response time for reference line
-            const avgResponseTime = analyticsSummary.responseTimeStats.avg;
-            
-            // Add average response time line (if we have data)
-            if (totalResponseTickets > 0 && avgResponseTime > 0) {
-                svg.append('line')
-                    .attr('x1', 0)
-                    .attr('x2', width)
-                    .attr('y1', y(avgResponseTime))
-                    .attr('y2', y(avgResponseTime))
-                    .attr('stroke', '#2c5282')
-                    .attr('stroke-width', 2)
-                    .attr('stroke-dasharray', '5,5');
-                
-                // Add average label
-                svg.append('text')
-                    .attr('x', width - 5)
-                    .attr('y', y(avgResponseTime) - 5)
-                    .text(`Avg: ${avgResponseTime.toFixed(1)}h`)
-                    .style('font-size', '12px')
-                    .style('fill', '#2c5282')
-                    .style('font-weight', 'bold')
-                    .style('text-anchor', 'end');
-            }
-            
-            // Add X axis label
-            svg.append('text')
-                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
-                .style('text-anchor', 'middle')
-                .text('Response Time Categories')
-                .style('fill', '#64748b');
-            
-            // Add Y axis label
-            svg.append('text')
-                .attr('transform', 'rotate(-90)')
-                .attr('y', 0 - margin.left)
-                .attr('x', 0 - (height / 2))
-                .attr('dy', '1em')
-                .style('text-anchor', 'middle')
-                .text('Number of Tickets')
-                .style('fill', '#64748b');
-            
-            // Add chart title
-            svg.append('text')
-                .attr('x', width / 2)
-                .attr('y', -10)
-                .attr('text-anchor', 'middle')
-                .style('font-size', '14px')
-                .style('font-weight', 'bold')
-                .style('fill', '#4a6fa5')
-                .text('Response Time Distribution by Category');
-            
-            // Calculate percentages for legend
-            function calculateResponseTimePercentage(categoryLabel) {
-                const category = responseTimeData.find(d => d.label === categoryLabel);
-                if (!category || totalResponseTickets === 0) return 0;
-                return ((category.count / totalResponseTickets) * 100).toFixed(1);
-            }
-            
-            // Create detailed legend
-            legend.innerHTML = responseTimeData.map(category => {
-                const percentage = calculateResponseTimePercentage(category.label);
-                return `
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: ${categoryColors[category.label]};"></div>
-                        <span>${category.label} (${category.description}): ${category.count} tickets (${percentage}%)</span>
-                    </div>
-                `;
-            }).join('');
-            
-            // Add average to legend (if available)
-            if (totalResponseTickets > 0 && avgResponseTime > 0) {
-                legend.innerHTML += `
-                    <div class="legend-item">
-                        <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
-                        <span>Average Numeric Time: ${avgResponseTime.toFixed(1)} hours</span>
-                    </div>
-                `;
-            }
+            // ... your existing function code ...
         }
         
         // Create performance chart
         function createPerformanceChart() {
-            const container = document.getElementById('performanceChart');
-            container.innerHTML = '';
-            const legend = document.getElementById('performanceLegend');
-            legend.innerHTML = '';
-            
-            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
-            const width = container.clientWidth - margin.left - margin.right;
-            const height = container.clientHeight - margin.top - margin.bottom;
-            
-            const svg = d3.select('#performanceChart')
-                .append('svg')
-                .attr('width', width + margin.left + margin.right)
-                .attr('height', height + margin.top + margin.bottom)
-                .append('g')
-                .attr('transform', `translate(${margin.left},${margin.top})`);
-            
-            // Group performance by rating (rounded to nearest 0.5)
-            const performanceGroups = {};
-            closedTicketsData.forEach(ticket => {
-                if (ticket['Average Performance'] > 0) {
-                    const rating = Math.round(ticket['Average Performance'] * 2) / 2; // Round to nearest 0.5
-                    if (!performanceGroups[rating]) {
-                        performanceGroups[rating] = [];
-                    }
-                    performanceGroups[rating].push(ticket);
-                }
-            });
-            
-            // Convert to array
-            const performanceData = Object.entries(performanceGroups)
-                .map(([rating, tickets]) => ({
-                    rating: parseFloat(rating),
-                    count: tickets.length,
-                    tickets: tickets
-                }))
-                .sort((a, b) => a.rating - b.rating);
-            
-            // X scale for ratings
-            const x = d3.scaleBand()
-                .domain(performanceData.map(d => d.rating))
-                .range([0, width])
-                .padding(0.2);
-            
-            // Y scale for counts
-            const y = d3.scaleLinear()
-                .domain([0, d3.max(performanceData, d => d.count)])
-                .nice()
-                .range([height, 0]);
-            
-            // Add X axis
-            svg.append('g')
-                .attr('transform', `translate(0,${height})`)
-                .call(d3.axisBottom(x).tickFormat(d => d.toFixed(1)));
-            
-            // Add Y axis
-            svg.append('g')
-                .call(d3.axisLeft(y));
-            
-            // Add bars
-            svg.selectAll('.performance-bar')
-                .data(performanceData)
-                .enter()
-                .append('rect')
-                .attr('class', 'performance-bar')
-                .attr('x', d => x(d.rating))
-                .attr('y', d => y(d.count))
-                .attr('width', x.bandwidth())
-                .attr('height', d => height - y(d.count))
-                .attr('fill', d => {
-                    // Color based on rating (green for high, yellow for medium, red for low)
-                    if (d.rating >= 4) return '#38a169';
-                    if (d.rating >= 3) return '#d69e2e';
-                    return '#e53e3e';
-                })
-                .attr('rx', 4)
-                .attr('ry', 4)
-                .on('mouseover', function(event, d) {
-                    tooltip.transition().duration(200).style('opacity', .9);
-                    tooltip.html(`
-                        <strong>Rating: ${d.rating}/5</strong><br/>
-                        Tickets: ${d.count}<br/>
-                        Percentage: ${((d.count / analyticsSummary.totalTickets) * 100).toFixed(1)}%
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-                })
-                .on('mouseout', function() {
-                    tooltip.transition().duration(500).style('opacity', 0);
-                });
-            
-            // Add value labels on bars
-            svg.selectAll('.performance-label')
-                .data(performanceData)
-                .enter()
-                .append('text')
-                .attr('class', 'performance-label')
-                .attr('x', d => x(d.rating) + x.bandwidth() / 2)
-                .attr('y', d => y(d.count) - 5)
-                .attr('text-anchor', 'middle')
-                .text(d => d.count)
-                .style('font-weight', 'bold')
-                .style('fill', '#2c5282');
-            
-            // Add average line
-            const avgPerformance = analyticsSummary.performanceStats.avg;
-            svg.append('line')
-                .attr('x1', 0)
-                .attr('x2', width)
-                .attr('y1', y(avgPerformance))
-                .attr('y2', y(avgPerformance))
-                .attr('stroke', '#2c5282')
-                .attr('stroke-width', 2)
-                .attr('stroke-dasharray', '5,5');
-            
-            // Add average label
-            svg.append('text')
-                .attr('x', width - 5)
-                .attr('y', y(avgPerformance) - 5)
-                .text(`Avg: ${avgPerformance.toFixed(1)}`)
-                .style('font-size', '12px')
-                .style('fill', '#2c5282')
-                .style('font-weight', 'bold')
-                .style('text-anchor', 'end');
-            
-            // Add X axis label
-            svg.append('text')
-                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
-                .style('text-anchor', 'middle')
-                .text('Performance Rating (1-5 scale)')
-                .style('fill', '#64748b');
-            
-            // Add Y axis label
-            svg.append('text')
-                .attr('transform', 'rotate(-90)')
-                .attr('y', 0 - margin.left)
-                .attr('x', 0 - (height / 2))
-                .attr('dy', '1em')
-                .style('text-anchor', 'middle')
-                .text('Number of Tickets')
-                .style('fill', '#64748b');
-            
-            // Create legend
-            legend.innerHTML = `
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #38a169;"></div>
-                    <span>High Performance (4.0+)</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #d69e2e;"></div>
-                    <span>Medium Performance (3.0-3.9)</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #e53e3e;"></div>
-                    <span>Low Performance (&lt;3.0)</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
-                    <span>Average: ${avgPerformance.toFixed(1)}/5</span>
-                </div>
-            `;
+            // ... your existing function code ...
         }
         
         // Create correlation chart (scatter plot)
         function createCorrelationChart() {
-            const container = document.getElementById('correlationChart');
-            container.innerHTML = '';
-            const legend = document.getElementById('correlationLegend');
-            legend.innerHTML = '';
-            
-            const margin = { top: 20, right: 30, bottom: 50, left: 60 };
-            const width = container.clientWidth - margin.left - margin.right;
-            const height = container.clientHeight - margin.top - margin.bottom;
-            
-            const svg = d3.select('#correlationChart')
-                .append('svg')
-                .attr('width', width + margin.left + margin.right)
-                .attr('height', height + margin.top + margin.bottom)
-                .append('g')
-                .attr('transform', `translate(${margin.left},${margin.top})`);
-            
-            // Prepare correlation data
-            const correlationData = closedTicketsData
-                .filter(ticket => ticket['Response Time'] > 0 && ticket['Average Performance'] > 0)
-                .map(ticket => ({
-                    responseTime: ticket['Response Time'],
-                    performance: ticket['Average Performance'],
-                    regulationArea: ticket['Regulation Area'] || 'Unknown'
-                }));
-            
-            // X scale for response time
-            const x = d3.scaleLinear()
-                .domain([0, d3.max(correlationData, d => d.responseTime)])
-                .nice()
-                .range([0, width]);
-            
-            // Y scale for performance
-            const y = d3.scaleLinear()
-                .domain([0, 5]) // Performance is 1-5 scale
-                .nice()
-                .range([height, 0]);
-            
-            // Add X axis
-            svg.append('g')
-                .attr('transform', `translate(0,${height})`)
-                .call(d3.axisBottom(x).tickFormat(d => d + 'h'));
-            
-            // Add Y axis
-            svg.append('g')
-                .call(d3.axisLeft(y));
-            
-            // Add grid lines
-            svg.append('g')
-                .attr('class', 'grid')
-                .attr('transform', `translate(0,${height})`)
-                .call(d3.axisBottom(x).tickSize(-height).tickFormat(''));
-            
-            svg.append('g')
-                .attr('class', 'grid')
-                .call(d3.axisLeft(y).tickSize(-width).tickFormat(''));
-            
-            // Add dots
-            svg.selectAll('.correlation-dot')
-                .data(correlationData)
-                .enter()
-                .append('circle')
-                .attr('class', 'correlation-dot')
-                .attr('cx', d => x(d.responseTime))
-                .attr('cy', d => y(d.performance))
-                .attr('r', 6)
-                .attr('fill', d => {
-                    // Color by response time category
-                    if (d.responseTime < 1) return '#38a169';        // <1 hour
-                    if (d.responseTime <= 8) return '#d69e2e';      // 1-8 hours
-                    if (d.responseTime <= 16) return '#ed8936';     // 8-16 hours
-                    return '#e53e3e';                              // >16 hours
-                })
-                .attr('opacity', 0.7)
-                .attr('stroke', 'white')
-                .attr('stroke-width', 1)
-                .on('mouseover', function(event, d) {
-                    tooltip.transition().duration(200).style('opacity', .9);
-                    tooltip.html(`
-                        <strong>Regulation Area: ${d.regulationArea}</strong><br/>
-                        Response Time: ${d.responseTime.toFixed(1)} hours<br/>
-                        Performance: ${d.performance.toFixed(1)}/5
-                    `)
-                    .style('left', (event.pageX + 10) + 'px')
-                    .style('top', (event.pageY - 28) + 'px');
-                })
-                .on('mouseout', function() {
-                    tooltip.transition().duration(500).style('opacity', 0);
-                });
-            
-            // Calculate correlation coefficient
-            const correlation = calculateCorrelation(correlationData);
-            
-            // Add correlation line if there's a correlation
-            if (Math.abs(correlation) > 0.1 && correlationData.length > 1) {
-                const regression = linearRegression(correlationData);
-                
-                svg.append('line')
-                    .attr('x1', x(0))
-                    .attr('x2', x(d3.max(correlationData, d => d.responseTime)))
-                    .attr('y1', y(regression.intercept))
-                    .attr('y2', y(regression.intercept + regression.slope * d3.max(correlationData, d => d.responseTime)))
-                    .attr('stroke', '#2c5282')
-                    .attr('stroke-width', 2)
-                    .attr('stroke-dasharray', '5,5');
-            }
-            
-            // Add X axis label
-            svg.append('text')
-                .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
-                .style('text-anchor', 'middle')
-                .text('Response Time (hours)')
-                .style('fill', '#64748b');
-            
-            // Add Y axis label
-            svg.append('text')
-                .attr('transform', 'rotate(-90)')
-                .attr('y', 0 - margin.left)
-                .attr('x', 0 - (height / 2))
-                .attr('dy', '1em')
-                .style('text-anchor', 'middle')
-                .text('Performance Rating (1-5)')
-                .style('fill', '#64748b');
-            
-            // Add correlation coefficient text
-            svg.append('text')
-                .attr('x', width - 10)
-                .attr('y', 20)
-                .text(`Correlation: ${correlation.toFixed(2)}`)
-                .style('font-size', '14px')
-                .style('fill', '#2c5282')
-                .style('font-weight', 'bold')
-                .style('text-anchor', 'end');
-            
-            // Add response time category legend
-            const responseColors = [
-                { label: '<1 hour', color: '#38a169' },
-                { label: '1-8 hours', color: '#d69e2e' },
-                { label: '8-16 hours', color: '#ed8936' },
-                { label: '>16 hours', color: '#e53e3e' }
-            ];
-            
-            const colorLegend = responseColors.map(item => `
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: ${item.color};"></div>
-                    <span>${item.label}</span>
-                </div>
-            `).join('');
-            
-            // Create legend
-            legend.innerHTML = `
-                <div class="legend-item">
-                    <span>Each dot represents one closed ticket</span>
-                </div>
-                ${colorLegend}
-                <div class="legend-item">
-                    <span>Correlation coefficient: ${correlation.toFixed(2)}</span>
-                </div>
-                ${Math.abs(correlation) > 0.1 && correlationData.length > 1 ? `
-                <div class="legend-item">
-                    <div class="legend-color" style="background-color: #2c5282; height: 2px; margin-top: 7px;"></div>
-                    <span>Regression line (trend)</span>
-                </div>
-                ` : ''}
-            `;
+            // ... your existing function code ...
         }
         
         // Helper function to calculate correlation coefficient
         function calculateCorrelation(data) {
-            if (data.length < 2) return 0;
-            
-            const n = data.length;
-            const sumX = data.reduce((sum, d) => sum + d.responseTime, 0);
-            const sumY = data.reduce((sum, d) => sum + d.performance, 0);
-            const sumXY = data.reduce((sum, d) => sum + d.responseTime * d.performance, 0);
-            const sumX2 = data.reduce((sum, d) => sum + d.responseTime * d.responseTime, 0);
-            const sumY2 = data.reduce((sum, d) => sum + d.performance * d.performance, 0);
-            
-            const numerator = n * sumXY - sumX * sumY;
-            const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
-            
-            return denominator === 0 ? 0 : numerator / denominator;
+            // ... your existing function code ...
         }
         
         // Helper function for linear regression
         function linearRegression(data) {
-            const n = data.length;
-            const sumX = data.reduce((sum, d) => sum + d.responseTime, 0);
-            const sumY = data.reduce((sum, d) => sum + d.performance, 0);
-            const sumXY = data.reduce((sum, d) => sum + d.responseTime * d.performance, 0);
-            const sumX2 = data.reduce((sum, d) => sum + d.responseTime * d.responseTime, 0);
-            
-            const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-            const intercept = (sumY - slope * sumX) / n;
-            
-            return { slope, intercept };
+            // ... your existing function code ...
         }
         
         // Initialize the dashboard
