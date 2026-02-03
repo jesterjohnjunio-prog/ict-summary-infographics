@@ -547,7 +547,7 @@
     <div class="dashboard-container">
         <div class="dashboard-header">
             <h1><i class="fas fa-chart-line"></i> ICT Concerns Analytics Dashboard</h1>
-            <p>Comprehensive analysis of resolved ICT service requests with insights into demographics, response times, and performance metrics</p>
+            <p>Analysis of resolved ICT service requests WITH performance ratings. Tickets without ratings are excluded from analysis.</p>
         </div>
         
         <div class="stats-summary" id="statsSummary">
@@ -628,7 +628,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-users"></i> Demographics Overview</div>
-                        <div class="chart-subtitle">Age distribution and sex breakdown of talent</div>
+                        <div class="chart-subtitle">Age distribution and sex breakdown of talent with rated tickets</div>
                     </div>
                 </div>
                 <div class="chart-container" id="demographicsChart"></div>
@@ -640,7 +640,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-sitemap"></i> Regulation Areas</div>
-                        <div class="chart-subtitle">Distribution of tickets across regulation areas</div>
+                        <div class="chart-subtitle">Distribution of rated tickets across regulation areas</div>
                     </div>
                 </div>
                 <div class="chart-container" id="regulationChart"></div>
@@ -652,7 +652,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-exclamation-triangle"></i> Problem Types Analysis</div>
-                        <div class="chart-subtitle">Most common issues encountered by talent</div>
+                        <div class="chart-subtitle">Most common issues in rated tickets</div>
                     </div>
                 </div>
                 <div class="chart-container" id="problemChart"></div>
@@ -664,7 +664,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-stopwatch"></i> Response Time Analysis</div>
-                        <div class="chart-subtitle">Distribution by response time categories</div>
+                        <div class="chart-subtitle">Distribution by response time categories in rated tickets</div>
                     </div>
                 </div>
                 <div class="chart-container" id="responseTimeChart"></div>
@@ -676,7 +676,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-star"></i> Performance Ratings</div>
-                        <div class="chart-subtitle">Average performance ratings across different categories</div>
+                        <div class="chart-subtitle">Performance ratings distribution (1-5 scale)</div>
                     </div>
                 </div>
                 <div class="chart-container" id="performanceChart"></div>
@@ -688,7 +688,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-project-diagram"></i> Correlation Analysis</div>
-                        <div class="chart-subtitle">Response time vs. performance rating correlation</div>
+                        <div class="chart-subtitle">Response time vs. performance rating correlation in rated tickets</div>
                     </div>
                 </div>
                 <div class="chart-container" id="correlationChart"></div>
@@ -717,7 +717,7 @@
         
         <div class="dashboard-footer">
             <p>Data Source: ICT Concerns - Closed Tickets Sheet | Last Updated: <span id="lastUpdated"></span></p>
-            <p>Analytics Dashboard • Auto-refreshes every 10 minutes</p>
+            <p>Analytics Dashboard • Only includes tickets with performance ratings • Auto-refreshes every 10 minutes</p>
         </div>
     </div>
 
@@ -948,6 +948,14 @@
                         // Get response time text from column K (index 10)
                         const responseTimeText = cols[10] || '';
                         
+                        // Get performance rating from column M (index 12)
+                        const performanceRating = parseFloat(cols[12]) || 0;
+                        
+                        // CRITICAL CHANGE: SKIP TICKETS WITHOUT PERFORMANCE RATING
+                        if (performanceRating <= 0) {
+                            continue; // Skip this ticket entirely
+                        }
+                        
                         // Convert response time text to numeric value
                         const responseTimeNumeric = convertResponseTimeToNumeric(responseTimeText);
                         const responseTimeCategory = getResponseTimeCategoryInfo(responseTimeText);
@@ -962,7 +970,7 @@
                             'Response Time Text': responseTimeText, // Column K (text)
                             'Response Time': responseTimeNumeric, // Converted numeric value
                             'Response Time Category': responseTimeCategory, // Category info
-                            'Average Performance': parseFloat(cols[12]) || 0 // Column M
+                            'Average Performance': performanceRating // Column M (already validated > 0)
                         };
                         
                         // Only add if we have at least some valid data
@@ -974,7 +982,7 @@
                     }
                 }
                 
-                console.log('Loaded', closedTicketsData.length, 'closed tickets');
+                console.log('Loaded', closedTicketsData.length, 'closed tickets WITH performance ratings');
                 
                 if (closedTicketsData.length > 0) {
                     // Analyze data
@@ -1003,7 +1011,7 @@
                     personnelSection.style.display = 'block';
                     
                 } else {
-                    throw new Error('No valid closed ticket data found in sheet');
+                    throw new Error('No closed tickets with performance ratings found in sheet');
                 }
                 
             } catch (err) {
@@ -1178,17 +1186,15 @@
                     }
                 }
                 
-                // Performance analysis
-                if (ticket['Average Performance'] > 0) {
-                    performanceSum += ticket['Average Performance'];
-                    validPerformanceCount++;
-                    
-                    if (ticket['Average Performance'] < analyticsSummary.performanceStats.min) {
-                        analyticsSummary.performanceStats.min = ticket['Average Performance'];
-                    }
-                    if (ticket['Average Performance'] > analyticsSummary.performanceStats.max) {
-                        analyticsSummary.performanceStats.max = ticket['Average Performance'];
-                    }
+                // Performance analysis (all tickets have performance > 0 by filtering)
+                performanceSum += ticket['Average Performance'];
+                validPerformanceCount++;
+                
+                if (ticket['Average Performance'] < analyticsSummary.performanceStats.min) {
+                    analyticsSummary.performanceStats.min = ticket['Average Performance'];
+                }
+                if (ticket['Average Performance'] > analyticsSummary.performanceStats.max) {
+                    analyticsSummary.performanceStats.max = ticket['Average Performance'];
                 }
             });
             
@@ -1235,11 +1241,9 @@
                 const personnel = personnelPerformance[personnelName];
                 personnel.totalTickets++;
                 
-                // Track performance
-                if (ticket['Average Performance'] > 0) {
-                    personnel.performanceSum += ticket['Average Performance'];
-                    personnel.performanceTickets++;
-                }
+                // Track performance (all tickets have performance > 0 by filtering)
+                personnel.performanceSum += ticket['Average Performance'];
+                personnel.performanceTickets++;
                 
                 // Track response time
                 if (ticket['Response Time'] > 0) {
@@ -1378,7 +1382,7 @@
                         <div class="personnel-chart-mini" id="${chartId}"></div>
                         
                         <div class="personnel-tickets">
-                            <div><strong>${personnel.totalTickets}</strong> total tickets handled</div>
+                            <div><strong>${personnel.totalTickets}</strong> rated tickets handled</div>
                             <div>Most common issue: ${personnel.primaryProblemType.substring(0, 30)}${personnel.primaryProblemType.length > 30 ? '...' : ''}</div>
                         </div>
                     </div>
@@ -1581,7 +1585,7 @@
                         <div class="personnel-chart-mini" id="${chartId}"></div>
                         
                         <div class="personnel-tickets">
-                            <div><strong>${personnel.totalTickets}</strong> total tickets handled</div>
+                            <div><strong>${personnel.totalTickets}</strong> rated tickets handled</div>
                             <div>Most common issue: ${personnel.primaryProblemType.substring(0, 30)}${personnel.primaryProblemType.length > 30 ? '...' : ''}</div>
                         </div>
                     </div>
@@ -1667,9 +1671,9 @@
                 {
                     icon: 'fas fa-ticket-alt',
                     iconColor: '#4a6fa5',
-                    title: 'Total Closed Tickets',
+                    title: 'Total Rated Tickets',
                     value: analyticsSummary.totalTickets,
-                    subtitle: 'Successfully resolved requests'
+                    subtitle: 'Closed tickets with performance ratings'
                 },
                 {
                     icon: 'fas fa-user-friends',
@@ -1897,7 +1901,7 @@
                 .attr('x', 0 - (height / 2))
                 .attr('dy', '1em')
                 .style('text-anchor', 'middle')
-                .text('Number of Tickets')
+                .text('Number of Rated Tickets')
                 .style('fill', '#64748b');
             
             // Create legend for gender
@@ -2115,7 +2119,7 @@
             svg.append('text')
                 .attr('transform', `translate(${width/2},${height + margin.bottom - 10})`)
                 .style('text-anchor', 'middle')
-                .text('Number of Tickets')
+                .text('Number of Rated Tickets')
                 .style('fill', '#64748b');
             
             // Add chart title inside
@@ -2126,11 +2130,11 @@
                 .style('font-size', '14px')
                 .style('font-weight', 'bold')
                 .style('fill', '#4a6fa5')
-                .text('Top 10 Most Common Problems');
+                .text('Top 10 Most Common Problems in Rated Tickets');
             
             // Create legend
             legend.innerHTML = `<div class="legend-item">
-                <span>Showing top 10 most common problems out of ${Object.keys(analyticsSummary.problemTypes).length} unique problem types</span>
+                <span>Showing top 10 most common problems out of ${Object.keys(analyticsSummary.problemTypes).length} unique problem types in rated tickets</span>
             </div>`;
         }
         
@@ -2272,7 +2276,7 @@
                 .attr('x', 0 - (height / 2))
                 .attr('dy', '1em')
                 .style('text-anchor', 'middle')
-                .text('Number of Tickets')
+                .text('Number of Rated Tickets')
                 .style('fill', '#64748b');
             
             // Add chart title
@@ -2283,7 +2287,7 @@
                 .style('font-size', '14px')
                 .style('font-weight', 'bold')
                 .style('fill', '#4a6fa5')
-                .text('Response Time Distribution by Category');
+                .text('Response Time Distribution in Rated Tickets');
             
             // Calculate percentages for legend
             function calculateResponseTimePercentage(categoryLabel) {
@@ -2335,13 +2339,12 @@
             // Group performance by rating (rounded to nearest 0.5)
             const performanceGroups = {};
             closedTicketsData.forEach(ticket => {
-                if (ticket['Average Performance'] > 0) {
-                    const rating = Math.round(ticket['Average Performance'] * 2) / 2; // Round to nearest 0.5
-                    if (!performanceGroups[rating]) {
-                        performanceGroups[rating] = [];
-                    }
-                    performanceGroups[rating].push(ticket);
+                // All tickets have performance > 0 by filtering
+                const rating = Math.round(ticket['Average Performance'] * 2) / 2; // Round to nearest 0.5
+                if (!performanceGroups[rating]) {
+                    performanceGroups[rating] = [];
                 }
+                performanceGroups[rating].push(ticket);
             });
             
             // Convert to array
@@ -2496,9 +2499,9 @@
                 .append('g')
                 .attr('transform', `translate(${margin.left},${margin.top})`);
             
-            // Prepare correlation data
+            // Prepare correlation data (all tickets have performance > 0 by filtering)
             const correlationData = closedTicketsData
-                .filter(ticket => ticket['Response Time'] > 0 && ticket['Average Performance'] > 0)
+                .filter(ticket => ticket['Response Time'] > 0)
                 .map(ticket => ({
                     responseTime: ticket['Response Time'],
                     performance: ticket['Average Performance'],
@@ -2631,7 +2634,7 @@
             // Create legend
             legend.innerHTML = `
                 <div class="legend-item">
-                    <span>Each dot represents one closed ticket</span>
+                    <span>Each dot represents one rated ticket</span>
                 </div>
                 ${colorLegend}
                 <div class="legend-item">
@@ -2687,4 +2690,3 @@
     </script>
 </body>
 </html>
-
