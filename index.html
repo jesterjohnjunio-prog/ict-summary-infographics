@@ -628,7 +628,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-users"></i> Demographics Overview</div>
-                        <div class="chart-subtitle">Age distribution and sex breakdown of talent with rated tickets</div>
+                        <div class="chart-subtitle">Age distribution and sex breakdown of talent</div>
                     </div>
                 </div>
                 <div class="chart-container" id="demographicsChart"></div>
@@ -640,7 +640,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-sitemap"></i> Regulation Areas</div>
-                        <div class="chart-subtitle">Distribution of rated tickets across regulation areas</div>
+                        <div class="chart-subtitle">Distribution of tickets across regulation areas</div>
                     </div>
                 </div>
                 <div class="chart-container" id="regulationChart"></div>
@@ -652,7 +652,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-exclamation-triangle"></i> Problem Types Analysis</div>
-                        <div class="chart-subtitle">Most common issues in rated tickets</div>
+                        <div class="chart-subtitle">Most common issues encountered by talent</div>
                     </div>
                 </div>
                 <div class="chart-container" id="problemChart"></div>
@@ -664,7 +664,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-stopwatch"></i> Response Time Analysis</div>
-                        <div class="chart-subtitle">Distribution by response time categories in rated tickets</div>
+                        <div class="chart-subtitle">Distribution by response time categories</div>
                     </div>
                 </div>
                 <div class="chart-container" id="responseTimeChart"></div>
@@ -688,7 +688,7 @@
                 <div class="chart-header">
                     <div>
                         <div class="chart-title"><i class="fas fa-project-diagram"></i> Correlation Analysis</div>
-                        <div class="chart-subtitle">Response time vs. performance rating correlation in rated tickets</div>
+                        <div class="chart-subtitle">Response time vs. performance rating correlation</div>
                     </div>
                 </div>
                 <div class="chart-container" id="correlationChart"></div>
@@ -982,7 +982,7 @@
                     }
                 }
                 
-                console.log('Loaded', closedTicketsData.length, 'closed tickets WITH performance ratings');
+                console.log('Loaded', closedTicketsData.length, 'Successfully resolved requests');
                 
                 if (closedTicketsData.length > 0) {
                     // Analyze data
@@ -2690,4 +2690,5 @@
     </script>
 </body>
 </html>
+
 
