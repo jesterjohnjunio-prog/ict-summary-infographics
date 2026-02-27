@@ -113,6 +113,37 @@
             font-size: 0.9rem;
         }
         
+        /* Quick date range buttons */
+        .quick-date-buttons {
+            display: flex;
+            gap: 10px;
+            margin-left: 10px;
+            flex-wrap: wrap;
+        }
+        
+        .quick-date-btn {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .quick-date-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        .quick-date-btn.active {
+            background: white;
+            color: #2c5282;
+            border-color: white;
+            font-weight: 600;
+        }
+        
         .stats-summary {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
@@ -585,6 +616,27 @@
             margin-left: 10px;
         }
         
+        .connection-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            background: rgba(255, 255, 255, 0.2);
+            margin-left: 10px;
+        }
+        
+        .connection-status.connected {
+            background: #38a169;
+            color: white;
+        }
+        
+        .connection-status.disconnected {
+            background: #e53e3e;
+            color: white;
+        }
+        
         @media (max-width: 1200px) {
             .charts-container {
                 grid-template-columns: 1fr;
@@ -638,13 +690,23 @@
             .date-filter-item {
                 width: 100%;
             }
+            
+            .quick-date-buttons {
+                margin-left: 0;
+                justify-content: center;
+            }
         }
     </style>
 </head>
 <body>
     <div class="dashboard-container">
         <div class="dashboard-header">
-            <h1><i class="fas fa-chart-line"></i> ICT Concerns Analytics Dashboard</h1>
+            <h1>
+                <i class="fas fa-chart-line"></i> ICT Concerns Analytics Dashboard
+                <span class="connection-status" id="connectionStatus">
+                    <i class="fas fa-circle"></i> Connecting...
+                </span>
+            </h1>
             <p>Analysis of resolved ICT service requests with Performance Ratings of each MIS Personnel.</p>
             
             <!-- Date Filter Controls -->
@@ -656,6 +718,9 @@
                 <div class="date-filter-item">
                     <label><i class="fas fa-calendar-alt"></i> End Date:</label>
                     <input type="date" id="endDate" value="2025-12-31">
+                </div>
+                <div class="quick-date-buttons" id="quickDateButtons">
+                    <!-- Buttons will be generated dynamically -->
                 </div>
                 <button class="date-filter-btn" onclick="loadDataWithDateFilter()">
                     <i class="fas fa-sync-alt"></i> Apply Filter
@@ -846,8 +911,8 @@
             <div class="loading-spinner">
                 <i class="fas fa-spinner fa-spin"></i>
             </div>
-            <h2>Loading Closed Tickets Analytics</h2>
-            <p id="loadingMessage">Fetching and analyzing data from Google Sheets...</p>
+            <h2>Loading Analytics Data</h2>
+            <p id="loadingMessage">Connecting to Google Sheets...</p>
         </div>
         
         <div id="error" class="error-message" style="display: none;">
@@ -855,14 +920,14 @@
                 <i class="fas fa-exclamation-triangle"></i>
             </div>
             <h2>Unable to Load Analytics Data</h2>
-            <p id="errorMessage">Please check your connection and try again.</p>
+            <p id="errorMessage">No tickets found for the selected date range or connection failed.</p>
             <button class="refresh-btn" onclick="loadDataWithDateFilter()">
                 <i class="fas fa-redo-alt"></i> Try Again
             </button>
         </div>
         
         <div class="dashboard-footer">
-            <p>Data Source: ICT Concerns - Closed Tickets & Archives 2025 | Last Updated: <span id="lastUpdated"></span></p>
+            <p>Data Source: ICT Concerns - <span id="activeSheet">Loading...</span> | Last Updated: <span id="lastUpdated"></span></p>
             <p>Analytics Dashboard • Only includes tickets with performance ratings • Filter by date range above</p>
         </div>
     </div>
@@ -872,12 +937,22 @@
         let closedTicketsData = [];
         let analyticsSummary = {};
         let personnelPerformance = {};
+        let connectionRetries = 0;
+        const MAX_RETRIES = 3;
         
         // Sheet URLs
         const SHEETS = {
             closedTickets: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSlQLcK_Ktw2zemNHDZ_70giWPqT54Mvoci_dJxQz1RWYhe94UaDQLPQU89DUYLTY-ow7s2sWa-PB0h/pub?gid=1210338777&single=true&output=csv',
             archives2025: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSlQLcK_Ktw2zemNHDZ_70giWPqT54Mvoci_dJxQz1RWYhe94UaDQLPQU89DUYLTY-ow7s2sWa-PB0h/pub?gid=58879544&single=true&output=csv'
         };
+        
+        // Multiple CORS proxies for redundancy
+        const CORS_PROXIES = [
+            'https://api.allorigins.win/raw?url=',
+            'https://corsproxy.io/?',
+            'https://proxy.cors.sh/',
+            'https://cors-anywhere.herokuapp.com/'
+        ];
         
         // Response time mapping
         const responseTimeMapping = {
@@ -900,6 +975,62 @@
         const tooltip = d3.select('body').append('div')
             .attr('class', 'tooltip')
             .style('opacity', 0);
+        
+        // Update connection status
+        function updateConnectionStatus(status, message) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (status === 'connected') {
+                statusEl.className = 'connection-status connected';
+                statusEl.innerHTML = '<i class="fas fa-circle"></i> Connected';
+            } else if (status === 'disconnected') {
+                statusEl.className = 'connection-status disconnected';
+                statusEl.innerHTML = '<i class="fas fa-circle"></i> Disconnected';
+            } else {
+                statusEl.className = 'connection-status';
+                statusEl.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Connecting...';
+            }
+        }
+        
+        // Function to generate quick date buttons dynamically
+        function generateQuickDateButtons() {
+            const container = document.getElementById('quickDateButtons');
+            const currentYear = new Date().getFullYear();
+            
+            // Clear existing buttons
+            container.innerHTML = '';
+            
+            // Add 2025 button (fixed for Archives)
+            const btn2025 = document.createElement('button');
+            btn2025.className = 'quick-date-btn';
+            btn2025.setAttribute('onclick', "setYearRange('2025')");
+            btn2025.innerHTML = '2025';
+            container.appendChild(btn2025);
+            
+            // Add buttons for years from 2026 to current year
+            for (let year = 2026; year <= currentYear; year++) {
+                const btn = document.createElement('button');
+                btn.className = 'quick-date-btn';
+                btn.setAttribute('onclick', `setYearRange('${year}')`);
+                btn.innerHTML = year;
+                container.appendChild(btn);
+            }
+        }
+        
+        // Function to set year range
+        function setYearRange(year) {
+            document.getElementById('startDate').value = `${year}-01-01`;
+            document.getElementById('endDate').value = `${year}-12-31`;
+            
+            // Update active button styling
+            document.querySelectorAll('.quick-date-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.innerHTML === year) {
+                    btn.classList.add('active');
+                }
+            });
+            
+            loadDataWithDateFilter();
+        }
         
         // Function to download chart as PNG
         function downloadChart(chartId, filename) {
@@ -976,22 +1107,33 @@
             return null;
         }
         
-        // Function to parse date from column B (assuming various formats)
+        // Function to parse date from column B with better format handling
         function parseDate(dateStr) {
-            if (!dateStr) return null;
+            if (!dateStr || dateStr.trim() === '') return null;
             
-            // Try to parse as MM/DD/YYYY
+            // Clean the date string
+            dateStr = dateStr.trim();
+            
+            // Try multiple date formats
+            
+            // Format: MM/DD/YYYY (most common in Google Sheets)
             const parts = dateStr.split('/');
             if (parts.length === 3) {
                 const month = parseInt(parts[0]);
                 const day = parseInt(parts[1]);
-                const year = parseInt(parts[2]);
-                if (!isNaN(month) && !isNaN(day) && !isNaN(year) && year >= 2000) {
+                let year = parseInt(parts[2]);
+                
+                // Handle 2-digit years
+                if (year < 100) {
+                    year = year + 2000;
+                }
+                
+                if (!isNaN(month) && !isNaN(day) && !isNaN(year) && month >= 1 && month <= 12 && day >= 1 && day <= 31) {
                     return new Date(year, month - 1, day);
                 }
             }
             
-            // Try to parse as YYYY-MM-DD
+            // Format: YYYY-MM-DD
             const isoParts = dateStr.split('-');
             if (isoParts.length === 3) {
                 const year = parseInt(isoParts[0]);
@@ -1002,10 +1144,15 @@
                 }
             }
             
-            // Try general date parsing
-            const date = new Date(dateStr);
-            if (!isNaN(date.getTime()) && date.getFullYear() >= 2000) {
-                return date;
+            // Format: DD-MM-YYYY
+            const dashParts = dateStr.split('-');
+            if (dashParts.length === 3) {
+                const day = parseInt(dashParts[0]);
+                const month = parseInt(dashParts[1]) - 1;
+                const year = parseInt(dashParts[2]);
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year) && year >= 2000) {
+                    return new Date(year, month, day);
+                }
             }
             
             return null;
@@ -1122,7 +1269,51 @@
                 .attr('ry', 2);
         }
         
-        // Load data from multiple sheets with date filtering
+        // Improved fetch with retry and multiple proxies
+        async function fetchWithRetry(url, retries = MAX_RETRIES) {
+            let lastError;
+            
+            for (let i = 0; i < retries; i++) {
+                try {
+                    // Try different proxies on each retry
+                    const proxyIndex = i % CORS_PROXIES.length;
+                    const proxyUrl = CORS_PROXIES[proxyIndex] + encodeURIComponent(url);
+                    
+                    console.log(`Attempt ${i + 1} with proxy ${proxyIndex + 1}`);
+                    
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+                    
+                    const response = await fetch(proxyUrl, {
+                        signal: controller.signal,
+                        headers: {
+                            'Accept': 'text/csv, text/plain, */*'
+                        }
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    
+                    const text = await response.text();
+                    if (text && text.length > 0) {
+                        return text;
+                    }
+                    
+                    throw new Error('Empty response');
+                    
+                } catch (error) {
+                    lastError = error;
+                    console.log(`Attempt ${i + 1} failed:`, error.message);
+                    // Wait before retrying (exponential backoff)
+                    await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, i)));
+                }
+            }
+            
+            throw lastError;
+        }
+        
+        // Load data from appropriate sheet based on date range
         async function loadDataWithDateFilter() {
             const loading = document.getElementById('loading');
             const error = document.getElementById('error');
@@ -1134,41 +1325,72 @@
             statsSummary.innerHTML = '';
             personnelSection.style.display = 'none';
             
+            updateConnectionStatus('connecting');
+            
             // Get filter values
             const startDate = new Date(document.getElementById('startDate').value);
             const endDate = new Date(document.getElementById('endDate').value);
             endDate.setHours(23, 59, 59, 999); // Include the entire end date
             
+            const startYear = startDate.getFullYear();
+            const endYear = endDate.getFullYear();
+            
+            console.log('Date range:', startDate, 'to', endDate);
+            console.log('Years:', startYear, 'to', endYear);
+            
+            // Determine which sheets to fetch based on date range
+            const sheetsToFetch = [];
+            
+            // Check if range includes 2025
+            if (startYear <= 2025 && endYear >= 2025) {
+                sheetsToFetch.push({ 
+                    name: 'Archives 2025', 
+                    url: SHEETS.archives2025,
+                    type: 'archives'
+                });
+            }
+            
+            // Check if range includes 2026 or later
+            if (endYear >= 2026) {
+                sheetsToFetch.push({ 
+                    name: 'Closed Tickets', 
+                    url: SHEETS.closedTickets,
+                    type: 'closed'
+                });
+            }
+            
+            if (sheetsToFetch.length === 0) {
+                document.getElementById('errorMessage').textContent = 'No data available for the selected date range. Please select 2025 or later.';
+                loading.style.display = 'none';
+                error.style.display = 'flex';
+                updateConnectionStatus('disconnected');
+                return;
+            }
+            
             // Update loading message
             document.getElementById('loadingMessage').textContent = 
-                `Fetching data from all sheets for ${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}...`;
+                `Fetching data from ${sheetsToFetch.map(s => s.name).join(' and ')}...`;
+            
+            document.getElementById('activeSheet').textContent = sheetsToFetch.map(s => s.name).join(' + ');
             
             try {
-                const corsProxy = 'https://api.allorigins.win/raw?url=';
                 let allData = [];
                 let dataSourcesUsed = [];
                 
-                // Always fetch from both sheets
-                const sheetsToFetch = [
-                    { name: 'Closed Tickets', url: SHEETS.closedTickets },
-                    { name: 'Archives 2025', url: SHEETS.archives2025 }
-                ];
-                
-                // Fetch each sheet
+                // Fetch each required sheet
                 for (const sheet of sheetsToFetch) {
                     try {
-                        const url = corsProxy + encodeURIComponent(sheet.url);
-                        console.log(`Loading ${sheet.name} from:`, url);
+                        console.log(`Loading ${sheet.name} from:`, sheet.url);
                         
-                        const response = await fetch(url);
-                        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-                        
-                        const csvText = await response.text();
+                        const csvText = await fetchWithRetry(sheet.url);
                         
                         // Parse and filter data from this sheet
-                        const sheetData = parseSheetData(csvText, sheet.name, startDate, endDate);
+                        const sheetData = parseSheetData(csvText, sheet.name, sheet.type, startDate, endDate);
                         allData = allData.concat(sheetData);
-                        dataSourcesUsed.push(sheet.name);
+                        
+                        if (sheetData.length > 0) {
+                            dataSourcesUsed.push(`${sheet.name} (${sheetData.length} tickets)`);
+                        }
                         
                         console.log(`Loaded ${sheetData.length} tickets from ${sheet.name}`);
                     } catch (sheetError) {
@@ -1179,8 +1401,19 @@
                 
                 console.log('Total loaded tickets:', allData.length);
                 
+                // Update connection status based on results
+                if (allData.length > 0) {
+                    updateConnectionStatus('connected');
+                } else {
+                    updateConnectionStatus('disconnected');
+                }
+                
                 // Update data source badge
-                document.getElementById('currentDataSource').textContent = dataSourcesUsed.join(' + ');
+                if (dataSourcesUsed.length > 0) {
+                    document.getElementById('currentDataSource').textContent = dataSourcesUsed.join(' + ');
+                } else {
+                    document.getElementById('currentDataSource').textContent = 'No tickets found';
+                }
                 
                 if (allData.length > 0) {
                     closedTicketsData = allData;
@@ -1211,19 +1444,23 @@
                     personnelSection.style.display = 'block';
                     
                 } else {
-                    throw new Error('No tickets found for the selected date range');
+                    // No tickets found - show error
+                    document.getElementById('errorMessage').textContent = 'No tickets found for the selected date range.';
+                    loading.style.display = 'none';
+                    error.style.display = 'flex';
                 }
                 
             } catch (err) {
                 console.error('Error loading data:', err);
-                document.getElementById('errorMessage').textContent = err.message;
+                document.getElementById('errorMessage').textContent = 'Failed to connect to Google Sheets. Please check your internet connection and try again.';
                 loading.style.display = 'none';
                 error.style.display = 'flex';
+                updateConnectionStatus('disconnected');
             }
         }
         
         // Parse sheet data and filter by date
-        function parseSheetData(csvText, sheetName, startDate, endDate) {
+        function parseSheetData(csvText, sheetName, sheetType, startDate, endDate) {
             const rows = csvText.split('\n');
             const tickets = [];
             
@@ -1244,25 +1481,37 @@
                     // Get performance rating from column M (index 12)
                     const performanceRating = parseFloat(cols[12]) || 0;
                     
+                    // SKIP TICKETS WITHOUT PERFORMANCE RATING
+                    if (performanceRating <= 0) {
+                        continue; // Skip this ticket
+                    }
+                    
                     // Get date from column B (index 1)
                     const dateStr = cols[1] || '';
                     const ticketDate = parseDate(dateStr);
                     
                     // Check if ticket is within date range
-                    let isInDateRange = true;
+                    let isInDateRange = false;
+                    
                     if (ticketDate && !isNaN(ticketDate.getTime())) {
+                        // If we have a valid date, check if it's within range
                         isInDateRange = ticketDate >= startDate && ticketDate <= endDate;
-                    } else if (sheetName === 'Archives 2025') {
-                        // For Archives 2025 without dates, assume they're in 2025 if no date
-                        isInDateRange = startDate.getFullYear() <= 2025 && endDate.getFullYear() >= 2025;
                     } else {
-                        // If no date and not archives, exclude
-                        isInDateRange = false;
+                        // For tickets without dates, include them only if:
+                        // - They're from Archives 2025 sheet AND the date range includes 2025
+                        // - They're from Closed Tickets sheet AND the date range includes 2026+
+                        if (sheetType === 'archives') {
+                            // Archives 2025 tickets without dates are assumed to be from 2025
+                            isInDateRange = (startDate.getFullYear() <= 2025 && endDate.getFullYear() >= 2025);
+                        } else if (sheetType === 'closed') {
+                            // For Closed Tickets without dates, only include if range is 2026 or later
+                            // and assume they're from 2026 (conservative approach)
+                            isInDateRange = (startDate.getFullYear() >= 2026);
+                        }
                     }
                     
-                    // CRITICAL CHANGE: SKIP TICKETS WITHOUT PERFORMANCE RATING OR OUT OF DATE RANGE
-                    if (performanceRating <= 0 || !isInDateRange) {
-                        continue; // Skip this ticket
+                    if (!isInDateRange) {
+                        continue;
                     }
                     
                     // Convert response time text to numeric value
@@ -2957,13 +3206,22 @@
         
         // Initialize the dashboard
         document.addEventListener('DOMContentLoaded', function() {
-            // Set default dates (current year)
-            const today = new Date();
-            const startDate = new Date(today.getFullYear(), 0, 1); // Jan 1 of current year
-            const endDate = new Date(today.getFullYear(), 11, 31); // Dec 31 of current year
+            // Generate quick date buttons dynamically
+            generateQuickDateButtons();
             
-            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
-            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+            // Set default dates to current year
+            const currentYear = new Date().getFullYear();
+            document.getElementById('startDate').value = `${currentYear}-01-01`;
+            document.getElementById('endDate').value = `${currentYear}-12-31`;
+            
+            // Set active button for current year
+            setTimeout(() => {
+                document.querySelectorAll('.quick-date-btn').forEach(btn => {
+                    if (btn.innerHTML === currentYear.toString()) {
+                        btn.classList.add('active');
+                    }
+                });
+            }, 100);
             
             loadDataWithDateFilter();
         });
